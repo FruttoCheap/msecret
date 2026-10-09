@@ -7,6 +7,7 @@ import unicodedata
 from pathlib import Path
 
 import docx
+import openpyxl
 from test_leak import _pdf
 
 from mcp_secret import ingest
@@ -35,6 +36,21 @@ def squash(s: str) -> str:
 
 def leaks(text: str, *values: str) -> list[str]:
     return [v for v in values if squash(v) in squash(text)]
+
+
+def test_inline_formatting_inside_a_value(tmp_path):
+    def contract(p):
+        d = docx.Document()
+        para = d.add_paragraph("Codice fiscale del titolare: RSSMRA")
+        para.add_run("80A01").bold = True  # Docling used to export "RSSMRA **80A01** H501U"
+        para.add_run("H501U. Scrivere a zq.canary@")
+        para.add_run("example.org").italic = True
+        para.add_run(" entro marzo.")
+        d.save(p)
+
+    html = "<p>Codice fiscale RSSMRA<b>80A01</b>H501U, saldo a marzo.</p>"
+    text = published(tmp_path, {"contratto.docx": contract, "scheda.html": html})
+    assert leaks(text, CF, EMAIL) == []
 
 
 def test_unicode_spaces_inside_iban_and_phone(tmp_path):
@@ -70,6 +86,24 @@ def test_identifier_split_across_table_cells(tmp_path):
         d.save(p)
 
     assert leaks(published(tmp_path, {"modulo.docx": form}), CF, IBAN) == []
+
+
+def test_xlsx_number_format_keeps_leading_zero(tmp_path):
+    def suppliers(p):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["Ragione sociale", "Partita IVA", "Telefono"])
+        ws.append(["Ditta individuale", 7123456787, 612345678])  # P.IVA 07123456787, tel 06 12345678
+        ws["B2"].number_format, ws["C2"].number_format = "00000000000", "0000000000"
+        wb.save(p)
+
+    assert leaks(published(tmp_path, {"fornitori.xlsx": suppliers}), "7123456787", "612345678") == []
+
+
+def test_hyperlink_targets_are_not_published(tmp_path):
+    html = ("<h1>Contatti</h1><p>Per urgenze <a href='https://wa.me/393331234567'>scrivimi su "
+            "WhatsApp</a> oppure <a href='mailto:zq.canary%40example.org'>mandami una mail</a>.</p>")
+    assert leaks(published(tmp_path, {"contatti.html": html}), "3331234567", "zq.canary") == []
 
 
 def test_identifier_glued_to_underscore(tmp_path):

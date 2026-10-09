@@ -43,8 +43,30 @@ def _converter():
 
 
 def _markdown(source) -> str:
+    from docling_core.transforms.serializer.markdown import MarkdownDocSerializer, MarkdownParams
+
     doc = _converter().convert(source).document
-    return doc.export_to_markdown(escape_html=False, escape_underscores=False)
+    # No **emphasis** markers: a bold run inside a CF would split it. No link targets: hidden
+    # metadata (wa.me/<phone>, mailto:) like the title and author.
+    params = MarkdownParams(escape_html=False, escape_underscores=False, include_formatting=False,
+                            include_hyperlinks=False)
+    return MarkdownDocSerializer(doc=doc, params=params).serialize().text
+
+
+def _xlsx(path: Path):
+    """Docling drops number formats: a zero-padded code (P.IVA, phone) would lose its 0s."""
+    import openpyxl
+    from docling.datamodel.base_models import DocumentStream
+
+    wb = openpyxl.load_workbook(path, data_only=True)  # cached values, as Docling reads them
+    cells = [c for ws in wb.worksheets for row in ws.iter_rows() for c in row
+             if type(c.value) is int and re.fullmatch("0+", c.number_format)]
+    for c in cells:
+        c.value = str(c.value).zfill(len(c.number_format))
+    if not cells:
+        return path
+    wb.save(buf := io.BytesIO())
+    return DocumentStream(name="book.xlsx", stream=io.BytesIO(buf.getvalue()))
 
 
 def parse(path: Path) -> str:
@@ -53,7 +75,7 @@ def parse(path: Path) -> str:
     if kind == ".txt":
         return path.read_text(errors="replace")
     if kind != ".eml":
-        return _markdown(path)
+        return _markdown(_xlsx(path) if kind == ".xlsx" else path)
     # ponytail: attachments are skipped, save and ingest them as files
     msg = email.message_from_bytes(path.read_bytes(), policy=email.policy.default)
     head = "\n".join(f"{h}: {msg[h]}" for h in ("From", "To", "Cc", "Subject") if msg[h])

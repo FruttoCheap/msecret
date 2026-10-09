@@ -108,7 +108,8 @@ _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d{{11}}{_E}"), _piva_ok),
-    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-]{1,64}@[\w-]+(?:\.[\w-]+)+"), None),  # anchored: no O(n²)
+    # anchored: no O(n²). " ?@ ?": Docling joins formatting runs with a space (x@ *domain*).
+    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-]{1,64} ?@ ?[\w-]+(?:\.[\w-]+)+"), None),
     ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"
         rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?\b(?P<v>{_DATE})"
     ), None),
