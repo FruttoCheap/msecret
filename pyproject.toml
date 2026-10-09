@@ -1,0 +1,22 @@
+[project]
+name = "mcp-secret"
+version = "0.1.0"
+description = "Local document index exposed to AI agents via MCP, pseudonymized only."
+requires-python = ">=3.12,<3.13"
+dependencies = ["docling", "ocrmac", "gliner", "mcp"]
+
+[project.scripts]
+mcp-secret = "mcp_secret.cli:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff", "faker"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
