@@ -20,7 +20,7 @@ markdown tables. `python fixtures/generate.py` also writes one DOCX (textutil), 
   ORG precision is low partly by construction: banks, "Parte Prima" and the like are masked but not
   annotated.
 
-## Held-out: seed 2, 30 docs, 26,894 chars, 212 ms per 1000 chars
+## Held-out: seed 2, 30 docs, 26,894 chars, 211 ms per 1000 chars
 
 | type | gold | recall | precision |
 | --- | --- | --- | --- |
@@ -32,13 +32,15 @@ markdown tables. `python fixtures/generate.py` also writes one DOCX (textutil), 
 | INDIRIZZO | 48 | 0.979 | 1.000 |
 | LUOGO | 57 | 1.000 | 0.960 |
 | ORG | 38 | 0.947 | 0.578 |
-| PERSONA | 136 | 0.956 | 0.992 |
+| PERSONA | 136 | 1.000 | 0.993 |
 | PIVA | 14 | 1.000 | 1.000 |
 | TARGA | 8 | 1.000 | 1.000 |
 | TELEFONO | 47 | 1.000 | 1.000 |
 
-Tuning set (seed 1, 60 docs, 56,005 chars, 211 ms per 1000 chars): PERSONA 0.962 / 1.000,
-ORG 0.948 / 0.558, LUOGO 0.977 / 0.945, every rule type 1.000 recall (TELEFONO precision 0.974).
+Tuning set (seed 1, 60 docs, 56,005 chars, 212 ms per 1000 chars): PERSONA 1.000 / 1.000,
+ORG 0.948 / 0.552, LUOGO 0.977 / 0.945, every rule type 1.000 recall (TELEFONO precision 0.974).
+PERSONA reached 1.000 once a full name's words are masked wherever else the same document
+capitalizes them; before that it was 0.956 held-out and 0.962 tuning.
 
 ## Model choice (seed 1, 30 docs, same rules, labels person/organization/location/address)
 

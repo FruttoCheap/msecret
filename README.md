@@ -2,8 +2,9 @@
 
 Indexes your documents locally and lets an AI agent search them over MCP, **pseudonymized
 only**: names, tax codes, IBANs, emails, phones become tokens like `[PERSONA_3]`, the same
-token for the same value in every document. The agent never sees a real value, a file name
-or any metadata.
+token for the same value in every document. The agent sees no file names and no file metadata
+(title, author, dates). Emails keep their From/To/Cc/Subject lines: they are text, masked like
+the body, so whatever detection misses there is published like a miss in the body.
 
 - `ingest` (no network) parses, detects PII, writes the token map to `private/private.db` and
   the pseudonymized chunks to `public/public.db`.
@@ -30,6 +31,9 @@ uv run mcp-secret ingest ~/Documents/clienti    # files or folders; re-run any t
 uv run mcp-secret show 3f9c0a1b2c3d4e5f         # exactly what the agent sees
 ```
 
+`ingest` prints each file's full path, in clear, to your terminal: run it yourself, not through
+an agent whose output leaves the machine (a cloud agent would send the paths along).
+
 Formats: PDF, DOCX, XLSX, PPTX, HTML, MD, images (OCR), EML, TXT. Unchanged files are skipped;
 changed files replace their chunks; files deleted or moved out of an ingested folder lose theirs.
 
@@ -44,6 +48,14 @@ The data root is `~/Library/Application Support/mcp-secret` (override with `MCP_
 
 `show` reveals a missed value? Add it to `deny.txt` and run `ingest` again: it is masked in
 new documents and scrubbed from those already indexed.
+
+## Residual risks
+
+- Detection recall is not 1.0: a missed value is published in clear. Check documents with
+  `show` and add what slipped through to `deny.txt`.
+- The metrics in [fixtures/README.md](fixtures/README.md) come from Faker templates and
+  overestimate real recall. Before trusting it with sensitive files, annotate about ten of your
+  own documents by hand and measure on them, locally; never commit them.
 
 ## Claude Desktop
 
