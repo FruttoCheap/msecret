@@ -24,7 +24,7 @@ from mcp_secret.ingest import _apply
 CLI = str(Path(sys.executable).parent / "mcp-secret")
 CF, IBAN, EMAIL = "RSSMRA80A01H501U", "IT60X0542811101000000123456", "zq.canary@example.org"
 NAME = "Zebulón Quackenbüsh"  # only deny.txt knows it is a name
-LATE = "frumious bandersnatch"  # no detector flags it; deny.txt learns it after publication
+LATE = "frittata tiepida"  # plain words GLiNER ignores (a nonsense name scored 0.76 as person)
 CANARIES = [CF, IBAN, EMAIL, *NAME.split(), *LATE.split()]
 NFD = unicodedata.normalize("NFD", NAME)
 
@@ -123,7 +123,8 @@ async def _tools(env: dict, chunk_ids: list[int]) -> tuple[list, dict, str]:
         windows = {i: (await call("get_chunk", chunk_id=i, neighbors=2))[1] for i in chunk_ids}
         for q in [CF, IBAN, NAME, LATE]:  # clear values are not in the index at all
             assert await call("search", query=q, k=20) == (False, []), q
-        for q in ["CF_1", "[PERSONA_1]", "IBAN_1 OR EMAIL_1", "fattur*"]:
+        # prefix* on running prose: a lone heading word ("Fattura ...") may be masked as ORG
+        for q in ["CF_1", "[PERSONA_1]", "IBAN_1 OR EMAIL_1", "bonific*"]:
             assert (await call("search", query=q))[1], q
         is_error, _ = await call("search", query=EMAIL)  # bad FTS syntax: generic error, no echo
         assert is_error
