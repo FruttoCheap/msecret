@@ -24,7 +24,7 @@ from mcp_secret.ingest import _apply
 CLI = str(Path(sys.executable).parent / "mcp-secret")
 CF, IBAN, EMAIL = "RSSMRA80A01H501U", "IT60X0542811101000000123456", "zq.canary@example.org"
 NAME = "Zebulón Quackenbüsh"  # only deny.txt knows it is a name
-LATE = "Ottoline Fairweather"  # added to deny.txt after its document was published
+LATE = "frumious bandersnatch"  # no detector flags it; deny.txt learns it after publication
 CANARIES = [CF, IBAN, EMAIL, *NAME.split(), *LATE.split()]
 NFD = unicodedata.normalize("NFD", NAME)
 
@@ -148,8 +148,9 @@ def test_leak(tmp_path: Path) -> None:
     # a value learned after its document was published is swept out of public.db
     (tmp_path / "late").mkdir()
     filler = "\n\n".join(["Lorem ipsum dolor sit amet. " * 20] * 5)  # -> 3 chunks
-    (tmp_path / "late" / "verbale.txt").write_text(f"# Verbale\n\nPresente {LATE}.\n\n{filler}")
+    (tmp_path / "late" / "verbale.txt").write_text(f"# Verbale\n\nNome in codice {LATE}.\n\n{filler}")
     assert cli(env, "ingest", str(tmp_path / "late")).returncode == 0
+    assert LATE.encode() in (root / "public" / "public.db").read_bytes()  # published in clear
     (root / "private" / "deny.txt").write_text(f"{NAME}\n{LATE}\n")
     r = cli(env, "ingest", str(tmp_path / "docs"), str(tmp_path / "late"))
     assert r.returncode == 0 and r.stdout.count("unchanged") == 8, r.stdout + r.stderr
@@ -171,7 +172,7 @@ def test_leak(tmp_path: Path) -> None:
         assert re.search(r"\[(CF|EMAIL|IBAN|PERSONA)_\d+\]", text[doc_id]), name
     late = windows[chunk_ids[-1]]  # ... but verbale: 3 chunks under one heading
     assert len(late) == 3 and all(c["text"].startswith("# Verbale") for c in late)
-    assert [c["chunk_id"] for c in late] == chunk_ids[-3:] and "[PERSONA_2]" in late[0]["text"]
+    assert [c["chunk_id"] for c in late] == chunk_ids[-3:] and "[PERSONA_" in late[0]["text"]
 
     # serve's sandbox, probed with the exact profile serve computes for itself
     code = "from mcp_secret.cli import home, profile; print(profile(home()), end='')"
