@@ -33,4 +33,4 @@ else to the pipeline work.
 ## Stack
 Docling (OcrMac for images/scans), stdlib email for EML, GLiNER for names/orgs/places,
 own regex+checksums for CF/P.IVA/IBAN/email/phone, stdlib sqlite3 with FTS5,
-official MCP SDK (FastMCP, stdio).
+official MCP SDK 2.x (`from mcp.server.mcpserver import MCPServer`, stdio).
