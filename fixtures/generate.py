@@ -139,7 +139,7 @@ class Gen:
         return _m("ORG", v)
 
     def city(self, p: Person | None = None) -> str:
-        if p and p.loc != "it_IT" and p.loc in self.fk:
+        if p and p.loc != "it_IT":
             return _m("LUOGO", self.fk[p.loc].city())
         return _m("LUOGO", self.r.choice(BIG_CITIES) if self.r.random() < 0.5 else self.r.choice(IT_CITIES))
 

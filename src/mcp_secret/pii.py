@@ -6,13 +6,9 @@ types rules beat the model, then the longest wins. Metrics and model choice: fix
 """
 
 import bisect
-import logging
 import re
-from collections import Counter
 from dataclasses import dataclass
 from functools import cache
-
-log = logging.getLogger(__name__)
 
 # Fine-tune of urchade/gliner_multi_pii-v1: best PERSONA recall at precision >= 0.95 here, and it
 # ships tokenizer.json + safetensors (no protobuf, no pickle). Comparison: fixtures/README.md.
@@ -296,5 +292,4 @@ def detect(text: str) -> list[Span]:
             m = re.search(r"[^\W_](?:.*[^\W_])?", text[a:b], re.DOTALL)
             if m and len(_alnum(m[0])) >= 3:  # not a stray "A" or "di"
                 bisect.insort(out, Span(a + m.start(), a + m.end(), s.type), key=lambda o: o.start)
-    log.debug("pii spans: %s", dict(Counter(s.type for s in out)))
     return out
