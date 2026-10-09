@@ -8,6 +8,7 @@ uncovered rest. Metrics and model choice: fixtures/README.md.
 
 import bisect
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import cache
 
@@ -87,12 +88,12 @@ _MON = r"(?i:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug
 _DAY = r"(?:\d{1,2}(?:°|st|nd|rd|th)?|(?i:primo))"  # 1°, 5th, "il primo maggio"
 _DATE = (
     r"(?:\d{1,2}(?P<sep>[./-])\d{1,2}(?P=sep)(?:\d{4}|\d{2})|\d{4}-\d{2}-\d{2}"
-    rf"|{_DAY}(?:\s+of)?[\s-]+{_MON}[\s-]+'?(?:\d{{4}}|\d{{2}})\b"  # 4th of July 1981, 14-Feb-83
+    rf"|{_DAY}(?:\s+of)?[\s-]+{_MON},?(?:\s+del)?[\s-]+'?(?:\d{{4}}|\d{{2}})\b"  # 1st of May, 1980
     rf"|{_MON}\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}"  # Feb 14th, 1983
     r"|\d{1,2}(?P<rs>[./ ])(?:I{1,3}|IV|VI{0,3}|IX|XI{0,2})(?P=rs)\d{2,4})"  # 12.III.1970
 )
-# Birth context only: compact 19900705, a form's letter boxes "0 1 / 0 1 / 1 9 9 0".
-_BIRTH = rf"{_DATE}|\d{{8}}\b|(?:\d ){{2}}(?:[./-] )?(?:\d ){{2}}(?:[./-] )?(?:\d ){{3}}\d"
+# Birth context only: compact 19900705, a form's letter boxes "0 1 / 0 1 / 1 9 9 0", "|2|1|0|4|...".
+_BIRTH = rf"{_DATE}|\d{{8}}\b|(?:\d[ \t|]+(?:[./-][ \t|]+)?){{7}}\d"
 _STREET = (
     r"Via|Viale|V\.le|Piazza|P\.zza|P\.za|Piazzale|Corso|C\.so|Largo|Vicolo|Vico|Strada|Contrada"
     r"|C\.da|Località|Loc\.|Borgo|Lungomare|Lungotevere|Salita|Traversa|Rotonda|Incrocio|Stretto"
@@ -112,15 +113,17 @@ _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d{{11}}{_E}"), _piva_ok),
-    # anchored: no O(n²). " ?@ ?": Docling joins formatting runs with a space (x@ *domain*).
-    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-][\w.+'’-]{0,63} ?@ ?[\w-]+(?:\.[\w-]+)+"), None),
-    ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"
-        rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?\b(?P<v>{_BIRTH})"
+    # anchored: no O(n²). Spaces: Docling joins formatting runs with one (x@ *domain* .it).
+    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-][\w.+'’-]{0,63} ?@ ?[\w-]+(?: ?\.[\w-]+)+"), None),
+    ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"; the
+        # value on the same line or right below it (a form's boxes: a table under the label)
+        rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?(?:\n[\s|]*)?"
+        rf"\b(?P<v>{_BIRTH})"
     ), None),
     ("DOCUMENTO", re.compile(  # CIE, passport, US SSN, tessera sanitaria card; or after a keyword
         r"\b(?:[A-Z]{2} ?\d{5} ?[A-Z]{2}|[A-Z]{2} ?\d{7}[A-Z]?|\d{3}-\d{2}-\d{4}|80\d{18})\b"
         r"|(?i:carta d['’]identit[àa]|\bC\.I\.|passaport[oi]|passport|patente|documento|licen[cs]e"
-        r"|tessera sanitaria|\bNHS\b|\bSSN\b|social security)\D{0,25}?\b(?P<v>\d{3}[ -]?\d{3}[ -]?\d{4}"
+        r"|tessera sanitaria|\bNHS\b|\bSSN\b|social security)\D{0,25}?\b(?P<v>\d{3}[ -]?\d{2,3}[ -]?\d{4}"
         r"|(?:[A-Z]{1,3} ?)?(?=[A-Z0-9]*\d)[A-Z0-9]{5,20}(?: [A-Z]{2}\b)?)\b"
     ), None),
     # Names the model scores low: after a title or greeting, and "M. Rossi".
@@ -130,11 +133,17 @@ _RULES = [
     # ("Support", "groups") swept through every document. A first name under an informal closing:
     ("PERSONA", re.compile(rf"(?m)^[ \t]*(?:Cheers|Thanks|Thank you|Best|Love|Un abbraccio|Baci"
                            rf"|A presto)[,!.]*[ \t]*\n[ \t]*[{_UP}][a-zà-ÿ'’-]{{2,}}[ \t]*$"), None),
-    # Profile URLs and handles carry the name: linkedin.com/in/<slug>, t.me/<user>, skype: <id>.
+    # Profile URLs and handles carry the name: linkedin.com/in/<slug>, any host's /@<user>,
+    # "IG: @<user>". Not an email's local part ("Instagram: x@y.it"): EMAIL masks that once.
     ("PERSONA", re.compile(
         r"(?i:\b(?:linkedin\.com/in|github\.com|gitlab\.com|t\.me|facebook\.com|instagram\.com"
-        r"|twitter\.com|x\.com|tiktok\.com)/@?|\b(?:skype|telegram|instagram|twitter|tiktok)\b"
-        r"(?::\s*@?|\s+@))[\w.-]*\w"), None),
+        r"|twitter\.com|x\.com|tiktok\.com)/@?|/@|\b(?:skype|telegram|instagram|ig|twitter|tiktok"
+        r"|facebook|fb|youtube|threads|snapchat|discord|twitch|mastodon|bluesky)\b"
+        r"(?::\s*@?|\s+@))[\w.-]*\w(?![\w.-]*@)"), None),
+    ("TELEFONO", re.compile(r"(?i:\bwa\.me/)(?P<v>\d{8,15})\b"), None),  # WhatsApp link as text
+    # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345".
+    ("IBAN", re.compile(r"(?i:\bc/c\b|\bconto(?: corrente)?\b|\baccount\b)[^\n\d]{0,15}?"
+                        r"(?P<v>\d{6,18})\b"), None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
     ("TARGA", re.compile(  # car plates; after "targa": motorcycle AB 12345, old ROMA A12345
@@ -149,9 +158,10 @@ _RULES = [
 ]
 # Lookahead: candidates may overlap (two IBANs in one table row), _ibans keeps the first.
 _IBAN = re.compile(rf"(?i){_B}(?=([A-Z]{_SEP}[A-Z]{_SEP}\d{_SEP}\d(?:{_SEP}[A-Z0-9]){{11,30}}))")
-# Not after a word, "/" or "-" (codes, dates), nor after "1," / "1." (amounts); a comma alone is
-# fine (CSV rows). Groups: one of ./- with optional spaces around it ("051 / 22 33 44").
-_PHONE = re.compile(r"(?<![\w+(/-])(?<!\d[.,])\(?\+?\d+\)?(?:(?: ?[./-] ?| )?\(?\d+\)?)*")
+# Not after a letter or digit, "/" or "-" (codes, dates), nor after "1." (amounts, versions);
+# after "_" (contatto_<phone>.vcf) and a comma (CSV rows, "Rosa,34,<phone>") is fine. Groups:
+# one of ./- with optional spaces around it ("051 / 22 33 44").
+_PHONE = re.compile(r"(?<![^\W_])(?<![+(/-])(?<!\d\.)\(?\+?\d+\)?(?:(?: ?[./-] ?| )?\(?\d+\)?)*")
 _PHONE_TOK = re.compile(r"\(?\+?\d+\)?")
 _PHONE_CTX = re.compile(r"(?i)\b(?:tel|cell|phone|fax|mob|recapit|numero|whatsapp)\w*\W{0,12}$")
 _TABLE = re.compile(r"(?m)^\|.*\n(?:\|.*(?:\n|$))+")
@@ -210,7 +220,22 @@ def _table_births(text: str):
                 yield Span(off + m.start(), off + m.end(), "DATA_NASCITA")
 
 
+_DASHES = "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"
+
+
+def _fold(m: re.Match) -> str:
+    c = m[0]
+    return "-" if c in _DASHES else " " if unicodedata.category(c) in ("Zs", "Mn", "Me") else c
+
+
+def _shadow(text: str) -> str:
+    """What the rules read: `text` with every Unicode dash as "-", every Unicode space and
+    combining mark (U+FE0F inside a number) as a space. Same length, so offsets hold."""
+    return re.sub(r"[^\x00-\x7f]", _fold, text)
+
+
 def _rules(text: str):
+    text = _shadow(text)
     for t, rx, ok in _RULES:
         for m in rx.finditer(text):
             g = "v" if "v" in rx.groupindex and m.start("v") >= 0 else 0
