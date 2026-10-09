@@ -166,3 +166,33 @@ FRR-BNC-90L45-L219L (come da tessera sanitaria).
 """
     text = published(tmp_path, {"lettera.txt": letter})
     assert leaks(text, "DLCMRC72B14F839S", "RSSGPP61D20F205H", "FRRBNC90L45L219L") == []
+
+
+def test_phone_numbers_in_csv_rows(tmp_path):
+    rows = """Export rubrica volontari (da sistemare)
+
+nome,cognome,telefono,email,citta
+Rosa,Leone,3471234567,rosa.leone@gmail.com,Torino
+Sole,Bianchi,+393409876543,sole.b@tiscali.it,Moncalieri
+Mei,Lin,3201239876,mei.lin@qq.com,Prato
+"""
+    text = published(tmp_path, {"rubrica.txt": rows})
+    assert leaks(text, "3471234567", "393409876543", "3201239876") == []
+
+
+def test_us_phone_without_keyword(tmp_path):
+    mail = """Hi Kevin,
+
+Liam starts Monday. If anything is missing just call me at 212-555-0187,
+or his partner Aoife at 917-555-0143 after 6pm.
+
+Thanks!
+"""
+    assert leaks(published(tmp_path, {"mail.txt": mail}), "212-555-0187", "917-555-0143") == []
+
+
+def test_landline_with_spaced_slash(tmp_path):
+    ad = """Affittasi stanza a Bologna zona Bolognina, 400 euro tutto incluso.
+Chiamate ore pasti allo 051 / 22 33 44 (chiedere di Giulia).
+"""
+    assert leaks(published(tmp_path, {"annuncio.txt": ad}), "051 / 22 33 44") == []

@@ -132,7 +132,9 @@ _RULES = [
 ]
 # Lookahead: candidates may overlap (two IBANs in one table row), _ibans keeps the first.
 _IBAN = re.compile(rf"(?i){_B}(?=([A-Z]{_SEP}[A-Z]{_SEP}\d{_SEP}\d(?:{_SEP}[A-Z0-9]){{11,30}}))")
-_PHONE = re.compile(r"(?<![\w+(/,-])(?<!\d\.)\(?\+?\d+\)?(?:[ ./-]?\(?\d+\)?)*")
+# Not after a word, "/" or "-" (codes, dates), nor after "1," / "1." (amounts); a comma alone is
+# fine (CSV rows). Groups: one of ./- with optional spaces around it ("051 / 22 33 44").
+_PHONE = re.compile(r"(?<![\w+(/-])(?<!\d[.,])\(?\+?\d+\)?(?:(?: ?[./-] ?| )?\(?\d+\)?)*")
 _PHONE_TOK = re.compile(r"\(?\+?\d+\)?")
 _PHONE_CTX = re.compile(r"(?i)\b(?:tel|cell|phone|fax|mob|recapit|numero|whatsapp)\w*\W{0,12}$")
 _TABLE = re.compile(r"(?m)^\|.*\n(?:\|.*(?:\n|$))+")
@@ -144,6 +146,8 @@ def _phone_ok(s: str, before: str) -> bool:
         return False
     if s[0] in "+(" or s.startswith("00"):
         return 8 <= d <= 15
+    if re.fullmatch(r"\d{3}([.-])\d{3}\1\d{4}", s):  # North American 212-555-0187
+        return True
     if _PHONE_CTX.search(before):
         return 6 <= d <= 15
     return (s[0] == "3" and 9 <= d <= 11) or (s[0] == "0" and 8 <= d <= 11)
