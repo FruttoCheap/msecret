@@ -8,6 +8,7 @@ from pathlib import Path
 
 import docx
 import openpyxl
+import pytest
 from test_leak import _pdf
 
 from mcp_secret import ingest
@@ -119,6 +120,12 @@ def test_fullwidth_and_invisible_characters(tmp_path):
     assert leaks(published(tmp_path, {"nota.txt": note}), CF, IBAN, EMAIL) == []
 
 
+def test_model_span_cut_by_a_rule_span_keeps_its_rest_masked(tmp_path):
+    line = ("Documento: passaporto n. JO3934474 rilasciato dal Comune di San Pietro A Vico "
+            "il 11 maggio 2025\n")  # from fixtures/out/06_anagrafica.txt
+    assert "San Pietro" not in published(tmp_path, {"anagrafica.txt": line})
+
+
 def test_deny_entry_with_dotted_capital_i(tmp_path):
     text = published(tmp_path, {"nota.txt": "Pratica riservata, parola chiave: İnce\n"}, deny="İnce\n")
     assert "İnce" not in text
@@ -227,6 +234,82 @@ IBAN  I T 6 0 X 0 5 4 2 8 1 1 1 0 1 0 0 0 0 0 0 1 2 3 4 5 6
 """
     text = published(tmp_path, {"modulo.txt": form})
     assert leaks(text, "FRRGLI90A41L781O", "01011990", IBAN) == []
+
+
+def test_all_caps_surname_first_addressee(tmp_path):
+    letter = """AVV. MARCO DE LUCA
+PATROCINANTE IN CASSAZIONE
+
+                                           Egr. Sig.
+                                           ESPOSITO GENNARO
+                                           Vico Lungo Teatro Nuovo 31
+                                           NAPOLI
+
+Napoli, 7 maggio 2025
+
+Oggetto: diffida
+"""
+    assert leaks(published(tmp_path, {"diffida.txt": letter}), "GENNARO", "ESPOSITO") == []
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "masking each part of a full name would make every surname a corpus-wide entity: the sweep "
+    "is global and case-insensitive, so names that are words (Costa, Grande, Porta, Russo) would "
+    "be masked as words in every document; needs a per-document scope entities do not have"))
+def test_lone_surname_after_full_name(tmp_path):
+    minutes = """CONDOMINIO "GIARDINO" - VIA NIZZA 45, TORINO
+VERBALE DI ASSEMBLEA ORDINARIA DEL 14/03/2025
+
+Il giorno 14 marzo 2025 alle ore 18:30 presso la sala comune si è riunita l'assemblea.
+
+PRESENTI: ROSSI Giuseppe (int. 3, mill. 85), BIANCHI Anna (delega a ROSSI), sig.ra Ferro
+(int. 5), il dott. Leone (int. 9), ZHANG Wei (int. 7), Mohammed El Amrani (int. 12).
+ASSENTI: Kovalenko Oleksandr, fam. Esposito.
+
+Presiede l'amministratore geom. Gianluca Sole, verbalizza Viola Fiore.
+
+1) Infiltrazioni int. 7: il sig. Zhang segnala che l'acqua scende dal bagno dell'int. 9.
+Il dott. Leone dice che ha già chiamato l'idraulico (Beppe, 02-1234567).
+2) Varie: Mohammed chiede di poter parcheggiare il furgone targato GH 517 TR in cortile.
+L'assemblea non approva.
+"""
+    text = published(tmp_path, {"verbale.txt": minutes})
+    assert leaks(text, "delega a ROSSI", "Mohammed chiede") == []
+
+
+def test_first_name_sign_off(tmp_path):
+    mail = """From: Siobhan O'Connell
+To: Liam Byrne
+Subject: Re: flat deposit
+
+Hi Liam,
+
+Sorry for the delay - here are the details the letting agent asked for.
+Current address is 42 Elm Grove, Didsbury, Manchester M20 6PL until the end of the month.
+
+Cheers,
+Siobhan
+
+--
+Siobhan O'Connell | Senior Analyst
+"""
+    assert leaks(published(tmp_path, {"mail.txt": mail}), "Cheers, Siobhan") == []
+
+
+def test_names_inside_profile_urls_and_handles(tmp_path):
+    cv = """# Curriculum Vitae
+
+## Dragoș Popescu
+
+- Data di nascita: 7 settembre 1988, Cluj-Napoca (Romania)
+- E-mail: dragos.popescu88@gmail.com
+- LinkedIn: https://www.linkedin.com/in/dragos-popescu-7b1a2c
+- GitHub: github.com/dpopescu88
+
+Referenze: Marco Ferro, telegram t.me/marcoferro_bo
+"""
+    text = published(tmp_path, {"cv.md": cv})
+    assert leaks(text, "dragos-popescu", "dpopescu88", "marcoferro_bo") == []
 
 
 def test_health_and_social_security_numbers(tmp_path):

@@ -126,6 +126,15 @@ _RULES = [
     # Names the model scores low: after a title or greeting, and "M. Rossi".
     ("PERSONA", re.compile(rf"\b{_TITLE} (?P<v>{_NAME}(?: {_NAME}){{0,2}})"), None),
     ("PERSONA", re.compile(rf"(?<![\w.])[A-Z]\. [{_UP}][a-zà-ÿ'’]{{2,}}"), None),
+    # These two keep their anchor in the span, so the value never becomes a bare common word
+    # ("Support", "groups") swept through every document. A first name under an informal closing:
+    ("PERSONA", re.compile(rf"(?m)^[ \t]*(?:Cheers|Thanks|Thank you|Best|Love|Un abbraccio|Baci"
+                           rf"|A presto)[,!.]*[ \t]*\n[ \t]*[{_UP}][a-zà-ÿ'’-]{{2,}}[ \t]*$"), None),
+    # Profile URLs and handles carry the name: linkedin.com/in/<slug>, t.me/<user>, skype: <id>.
+    ("PERSONA", re.compile(
+        r"(?i:\b(?:linkedin\.com/in|github\.com|gitlab\.com|t\.me|facebook\.com|instagram\.com"
+        r"|twitter\.com|x\.com|tiktok\.com)/@?|\b(?:skype|telegram|instagram|twitter|tiktok)\b"
+        r"(?::\s*@?|\s+@))[\w.-]*\w"), None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
     ("TARGA", re.compile(  # car plates; after "targa": motorcycle AB 12345, old ROMA A12345
@@ -275,8 +284,17 @@ def detect(text: str) -> list[Span]:
     out: list[Span] = []
     # Across types: rules first, then longest; ties go to the first type by name (PIVA > TELEFONO).
     for _, s in sorted(merged, key=lambda c: (c[0], c[1].start - c[1].end)):
-        i = bisect.bisect(out, s.start, key=lambda o: o.start)
-        if (i == 0 or out[i - 1].end <= s.start) and (i == len(out) or s.end <= out[i].start):
+        i = bisect.bisect(out, s.start, key=lambda o: o.end)
+        cut = out[i : bisect.bisect_left(out, s.end, key=lambda o: o.start)]
+        if not cut:
             out.insert(i, s)
+            continue
+        # A span cut by kept ones keeps its uncovered rest: dropping it would leak those words
+        # ("Comune di San Pietro A" of an ORG cut by the address "Vico il 11").
+        edges = [s.start, *(x for o in cut for x in (o.start, o.end)), s.end]
+        for a, b in zip(edges[::2], edges[1::2]):
+            m = re.search(r"[^\W_](?:.*[^\W_])?", text[a:b], re.DOTALL)
+            if m and len(_alnum(m[0])) >= 3:  # not a stray "A" or "di"
+                bisect.insort(out, Span(a + m.start(), a + m.end(), s.type), key=lambda o: o.start)
     log.debug("pii spans: %s", dict(Counter(s.type for s in out)))
     return out
