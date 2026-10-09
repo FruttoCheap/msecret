@@ -4,10 +4,12 @@ output of the MCP tools, and the serve process must be boxed in."""
 import asyncio
 import json
 import os
+import pwd
 import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import unicodedata
 from email.message import EmailMessage
 from pathlib import Path
@@ -179,8 +181,13 @@ def test_leak(tmp_path: Path) -> None:
     code = "from mcp_secret.cli import home, profile; print(profile(home()), end='')"
     prof = subprocess.run([sys.executable, "-I", "-c", code], env=boxed, capture_output=True,
                           text=True, check=True).stdout
-    probe = subprocess.run(sandbox_cmd(prof, "-c", PROBE, str(root)), env=boxed, capture_output=True,
-                           text=True, check=False)
+    me = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
+    assert f'(subpath "{me}")' in prof  # the account's home is denied, whatever $HOME says
+    with tempfile.TemporaryDirectory(dir="/private/tmp") as tmp:  # documents outside any $HOME
+        (Path(tmp) / "a.txt").write_text(CF)
+        docs = [str(Path(tmp) / "a.txt"), str((tmp_path / "docs" / "nota.txt").resolve())]
+        probe = subprocess.run(sandbox_cmd(prof, "-c", PROBE, str(root), *docs), env=boxed,
+                               capture_output=True, text=True, check=False)
     assert probe.returncode == 0, probe.stdout + probe.stderr
     # fail closed: a forged "already sandboxed" flag without the sandbox refuses to serve
     r = cli(boxed, "--sandboxed", "serve")
@@ -188,7 +195,7 @@ def test_leak(tmp_path: Path) -> None:
 
 
 PROBE = """
-import os, socket, sys
+import ctypes, os, socket, subprocess, sys
 def denied(op):
     try:
         op()
@@ -200,8 +207,16 @@ def denied(op):
 def connect():
     with socket.socket() as s:
         s.connect(("127.0.0.1", 9))
+def mach_lookup():
+    lib, port = ctypes.CDLL(None), ctypes.c_uint()
+    bootstrap = ctypes.c_uint.in_dll(lib, "bootstrap_port")
+    if lib.bootstrap_look_up(bootstrap, b"com.apple.coreservices.launchservicesd", ctypes.byref(port)):
+        raise PermissionError
 root, home = sys.argv[1], os.path.expanduser("~")
 checks = {
+    **{f"read {d}": denied(lambda d=d: open(d).read()) for d in sys.argv[2:]},  # /private/tmp, /var
+    "exec /bin/sh": denied(lambda: subprocess.run(["/bin/sh", "-c", "true"])),
+    "mach-lookup": denied(mach_lookup),
     "private.db": denied(lambda: open(root + "/private/private.db", "rb").read(1)),
     "~/Documents": denied(lambda: open(home + "/Documents/secret.txt").read()),
     "list $HOME": denied(lambda: os.listdir(home)),

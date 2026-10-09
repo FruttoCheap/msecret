@@ -8,8 +8,9 @@ or any metadata.
 - `ingest` (no network) parses, detects PII, writes the token map to `private/private.db` and
   the pseudonymized chunks to `public/public.db`.
 - `serve` (MCP over stdio) opens only `public/public.db`, read-only, inside `sandbox-exec`: no
-  network, no reads of `$HOME` except `public/` and the Python runtime. It refuses to start if
-  the sandbox is not active.
+  network, no programs but Python itself, no system services (mach-lookup), no reads of your
+  home folder, `/Users`, `/Volumes` or the temp folders except `public/` and the Python runtime.
+  It refuses to start if the sandbox is not active.
 
 ## Install
 

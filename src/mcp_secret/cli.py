@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import pwd
 import site
 import socket
 import sys
@@ -20,21 +21,33 @@ def _q(path) -> str:
     return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _any(kind: str, paths) -> str:
+    return " ".join(f"({kind} {_q(p)})" for p in paths)
+
+
 def profile(root: Path | None = None) -> str:
-    """sandbox-exec profile: no network. With `root` (serve): no reads of $HOME or of the
-    data root except public/ and the Python runtime, no writes there at all."""
+    """sandbox-exec profile: no network. With `root` (serve): no reads or writes of $HOME, the
+    data root, other users, volumes and temp dirs except reads of public/ and the Python
+    runtime; no exec but Python itself; no mach services."""
     sbpl = "(version 1)(allow default)(deny network*)"
     if root is None:
         return sbpl
-    pub, me = root / "public", Path.home().resolve()
+    # the account's home, not $HOME: whoever launches serve sets the environment
+    pub, me = root / "public", Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
     # not sys.path: it may hold the cwd or PYTHONPATH, i.e. anything under $HOME
     runtime = {os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, *site.getsitepackages(),
                                              Path(__file__).parents[1])}
+    # ponytail: where documents usually live; (deny default) if one turns up elsewhere (/opt)
+    docs = [me, root, "/Users", "/Volumes", "/private/tmp", "/private/var/folders"]
     return sbpl + "".join([
-        f"(deny file-read* file-write* (subpath {_q(me)}) (subpath {_q(root)}))",
+        f"(deny file-read* file-write* {_any('subpath', docs)})",
         # SQLite lstat()s every path component when opening public.db
-        f"(allow file-read-metadata {' '.join(f'(literal {_q(a)})' for a in pub.parents)})",
-        f"(allow file-read* {' '.join(f'(subpath {_q(p)})' for p in [pub, *sorted(runtime)])})",
+        f"(allow file-read-metadata {_any('literal', pub.parents)})",
+        f"(allow file-read* {_any('subpath', [pub, *sorted(runtime)])})",
+        # sandbox-exec execs the interpreter itself, after the profile applies
+        "(deny process-exec*)",
+        f"(allow process-exec {_any('literal', {sys.executable, os.path.realpath(sys.executable)})})",
+        "(deny mach-lookup)",
     ])
 
 
@@ -57,10 +70,11 @@ def _connect_out() -> None:
         s.connect(("127.0.0.1", 9))
 
 
-def _sandboxed(args: argparse.Namespace, prof: str, *must_fail) -> None:
-    """Re-exec under sandbox-exec, then prove it. Fails closed: no sandbox, no run."""
+def _sandboxed(args: argparse.Namespace, root: Path | None, *must_fail) -> None:
+    """Re-exec under sandbox-exec with profile(root), then prove it. Fails closed."""
     if not args.sandboxed:  # exec raises if sandbox-exec is missing; a bad profile exits non-zero
-        os.execv(SANDBOX, sandbox_cmd(prof, "-m", "mcp_secret.cli", "--sandboxed", *sys.argv[1:]))
+        cmd = sandbox_cmd(profile(root), "-m", "mcp_secret.cli", "--sandboxed", *sys.argv[1:])
+        os.execv(SANDBOX, cmd)
     if not all(_denied(op) for op in (_connect_out, *must_fail)):
         sys.exit("mcp-secret: sandbox not active, refusing to run")
 
@@ -106,11 +120,11 @@ def main() -> None:
             if args.cmd == "serve":
                 os.chdir("/")  # a cwd under $HOME is unreadable in the sandbox (rich calls getcwd)
         if args.cmd == "ingest":
-            _sandboxed(args, profile())
+            _sandboxed(args, None)
             from mcp_secret import ingest
 
             sys.exit(ingest.run(root, args.paths))
-        _sandboxed(args, profile(root), lambda: os.listdir(priv))
+        _sandboxed(args, root, lambda: os.listdir(priv))
         from mcp_secret import server
 
         server.run(db)

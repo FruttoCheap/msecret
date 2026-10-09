@@ -16,7 +16,9 @@ con: sqlite3.Connection
 
 
 def connect(db: Path) -> sqlite3.Connection:
-    return sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, check_same_thread=False)
+    con = sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, check_same_thread=False)
+    con.execute("PRAGMA temp_store = MEMORY")  # serve's sandbox denies $TMPDIR
+    return con
 
 
 @app.tool(description=f"""Full-text search (BM25) over the user's pseudonymized documents.
