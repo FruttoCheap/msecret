@@ -83,12 +83,16 @@ _SEP = r"\s*+[.|/-]?+\s*+"  # possessive: linear on padded table cells
 # The CF rule is letter by letter: "RSS MRA 80A01 H501U", "R S S M R A ...", "RSSMRA80A0 1H501U".
 _CF = _SEP.join([r"[A-Z]"] * 6 + [_OMO] * 2 + ["[A-EHLMPR-T]"] + [_OMO] * 2 + ["[A-Z]"] + [_OMO] * 3 + ["[A-Z]"])
 _B, _E = r"(?<![^\W_])", r"(?![^\W_])"  # word boundaries where "_" is a separator (CI_<CF>.pdf)
+_MON = r"(?i:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec)[a-z]*\.?"
+_DAY = r"(?:\d{1,2}(?:°|st|nd|rd|th)?|(?i:primo))"  # 1°, 5th, "il primo maggio"
 _DATE = (
     r"(?:\d{1,2}(?P<sep>[./-])\d{1,2}(?P=sep)(?:\d{4}|\d{2})|\d{4}-\d{2}-\d{2}"
-    r"|\d{1,2}°?\s+(?i:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec)"
-    r"[a-z]*\.?\s+\d{4}"
-    r"|(?i:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})"
+    rf"|{_DAY}(?:\s+of)?[\s-]+{_MON}[\s-]+'?(?:\d{{4}}|\d{{2}})\b"  # 4th of July 1981, 14-Feb-83
+    rf"|{_MON}\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}"  # Feb 14th, 1983
+    r"|\d{1,2}(?P<rs>[./ ])(?:I{1,3}|IV|VI{0,3}|IX|XI{0,2})(?P=rs)\d{2,4})"  # 12.III.1970
 )
+# Birth context only: compact 19900705, a form's letter boxes "0 1 / 0 1 / 1 9 9 0".
+_BIRTH = rf"{_DATE}|\d{{8}}\b|(?:\d ){{2}}(?:[./-] )?(?:\d ){{2}}(?:[./-] )?(?:\d ){{3}}\d"
 _STREET = (
     r"(?:Via|Viale|V\.le|Piazza|P\.zza|P\.za|Piazzale|Corso|C\.so|Largo|Vicolo|Vico|Strada|Contrada"
     r"|C\.da|Località|Loc\.|Borgo|Lungomare|Lungotevere|Salita|Traversa|Rotonda|Incrocio|Stretto"
@@ -111,7 +115,7 @@ _RULES = [
     # anchored: no O(n²). " ?@ ?": Docling joins formatting runs with a space (x@ *domain*).
     ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-]{1,64} ?@ ?[\w-]+(?:\.[\w-]+)+"), None),
     ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"
-        rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?\b(?P<v>{_DATE})"
+        rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?\b(?P<v>{_BIRTH})"
     ), None),
     ("DOCUMENTO", re.compile(
         r"\b(?:[A-Z]{2}\d{5}[A-Z]{2}|[A-Z]{2} ?\d{7}[A-Z]?)\b"
@@ -187,7 +191,7 @@ def _table_births(text: str):
     # ponytail: every date of a markdown table whose header mentions birth; per column if noisy.
     for t in _TABLE.finditer(text):
         head = t.group().split("\n", 1)
-        if re.search(r"(?i)nascit|birth", head[0]):
+        if re.search(r"(?i)nascit|birth|\bnat[oa]\b|\bd\.?o\.?b\b", head[0]):
             off = t.start() + len(head[0]) + 1
             for m in re.finditer(_DATE, head[1]):
                 yield Span(off + m.start(), off + m.end(), "DATA_NASCITA")

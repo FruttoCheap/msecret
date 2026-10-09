@@ -180,6 +180,55 @@ Mei,Lin,3201239876,mei.lin@qq.com,Prato
     assert leaks(text, "3471234567", "393409876543", "3201239876") == []
 
 
+def test_birth_dates_under_a_nato_il_header(tmp_path):
+    table = """# Anagrafica dipendenti
+
+| Cognome | Nome | Nato il | Cellulare |
+|---|---|---|---|
+| Sole | Bianca | 01/01/1985 | 333 4455667 |
+| Leone | Anna | 15.11.1992 | 320 1122334 |
+| Kovalenko | Oleksandr | 1980-08-12 | +48 512 345 678 |
+"""
+    text = published(tmp_path, {"anagrafica.md": table})
+    assert leaks(text, "01/01/1985", "15.11.1992", "1980-08-12") == []
+
+
+def test_italian_birth_date_variants(tmp_path):
+    chat = """[12/03/25, 09:15] Leone: mio padre è nato il 20 aprile 61
+[12/03/25, 09:16] Bianca: e la zia?
+[12/03/25, 09:17] Leone: nata il 12.III.1970, a Lecce
+
+Scheda iscrizione: Kevin Hoxha, nato il primo maggio 2015 a Tirana.
+Data di nascita (aaaammgg): 19900705
+"""
+    text = published(tmp_path, {"note.txt": chat})
+    assert leaks(text, "20 aprile 61", "12.III.1970", "primo maggio 2015", "19900705") == []
+
+
+def test_english_birth_date_variants(tmp_path):
+    agreement = """SERVICE AGREEMENT
+
+between Sole Holdings Ltd and Mr. Hamid Reza Karimi, born 5th March 1975, passport no. K12345678.
+
+New hire: Liam O'Brien, DOB: Feb 14th, 1983.
+Contractor: Aoife Kelly, date of birth 14-Feb-1983.
+Reference: Ann Lee, born on the 4th of July 1981.
+"""
+    text = published(tmp_path, {"agreement.txt": agreement})
+    assert leaks(text, "5th March 1975", "Feb 14th, 1983", "14-Feb-1983", "4th of July 1981") == []
+
+
+def test_letter_boxed_form_fields(tmp_path):
+    form = """MODULO ADESIONE CONTO - compilare in stampatello
+
+CODICE FISCALE  F R R G L I 9 0 A 4 1 L 7 8 1 O
+DATA DI NASCITA  0 1 / 0 1 / 1 9 9 0
+IBAN  I T 6 0 X 0 5 4 2 8 1 1 1 0 1 0 0 0 0 0 0 1 2 3 4 5 6
+"""
+    text = published(tmp_path, {"modulo.txt": form})
+    assert leaks(text, "FRRGLI90A41L781O", "01011990", IBAN) == []
+
+
 def test_us_phone_without_keyword(tmp_path):
     mail = """Hi Kevin,
 
