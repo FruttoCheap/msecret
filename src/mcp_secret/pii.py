@@ -94,11 +94,11 @@ _DATE = (
 # Birth context only: compact 19900705, a form's letter boxes "0 1 / 0 1 / 1 9 9 0".
 _BIRTH = rf"{_DATE}|\d{{8}}\b|(?:\d ){{2}}(?:[./-] )?(?:\d ){{2}}(?:[./-] )?(?:\d ){{3}}\d"
 _STREET = (
-    r"(?:Via|Viale|V\.le|Piazza|P\.zza|P\.za|Piazzale|Corso|C\.so|Largo|Vicolo|Vico|Strada|Contrada"
+    r"Via|Viale|V\.le|Piazza|P\.zza|P\.za|Piazzale|Corso|C\.so|Largo|Vicolo|Vico|Strada|Contrada"
     r"|C\.da|Località|Loc\.|Borgo|Lungomare|Lungotevere|Salita|Traversa|Rotonda|Incrocio|Stretto"
     r"|Canale|Galleria|Calle|Fondamenta|Frazione|Fraz\.|Circonvallazione|Passaggio|Rione"
-    r"|via|viale|piazza|corso)"
 )
+_STREET = rf"(?:{_STREET}|{_STREET.upper()}|via|viale|piazza|corso)"  # VIA APPIA on ID cards
 _UP = "A-ZÀ-ÖØ-ÞĀ-žȘ-ț"  # uppercase Latin, give or take (re has no \p{Lu})
 _CITY = rf"[{_UP}][\w'’]*(?:[ -](?:[a-zà-ÿ]{{1,5}}['’]?\s?)?[{_UP}][\w'’]*)*"
 _CAP_CITY = rf"\d{{5}},?\s+{_CITY}(?:\s*\([A-Z]{{2}}\))?"
@@ -113,21 +113,25 @@ _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d{{11}}{_E}"), _piva_ok),
     # anchored: no O(n²). " ?@ ?": Docling joins formatting runs with a space (x@ *domain*).
-    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-]{1,64} ?@ ?[\w-]+(?:\.[\w-]+)+"), None),
+    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-][\w.+'’-]{0,63} ?@ ?[\w-]+(?:\.[\w-]+)+"), None),
     ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"
         rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?\b(?P<v>{_BIRTH})"
     ), None),
-    ("DOCUMENTO", re.compile(
-        r"\b(?:[A-Z]{2}\d{5}[A-Z]{2}|[A-Z]{2} ?\d{7}[A-Z]?)\b"
-        r"|(?i:carta d['’]identit[àa]|\bC\.I\.|passaport[oi]|passport|patente|documento|licen[cs]e)"
-        r"\D{0,25}?\b(?P<v>(?:[A-Z]{1,3} ?)?(?=[A-Z0-9]*\d)[A-Z0-9]{5,12})\b"
+    ("DOCUMENTO", re.compile(  # CIE, passport, US SSN, tessera sanitaria card; or after a keyword
+        r"\b(?:[A-Z]{2} ?\d{5} ?[A-Z]{2}|[A-Z]{2} ?\d{7}[A-Z]?|\d{3}-\d{2}-\d{4}|80\d{18})\b"
+        r"|(?i:carta d['’]identit[àa]|\bC\.I\.|passaport[oi]|passport|patente|documento|licen[cs]e"
+        r"|tessera sanitaria|\bNHS\b|\bSSN\b|social security)\D{0,25}?\b(?P<v>\d{3}[ -]?\d{3}[ -]?\d{4}"
+        r"|(?:[A-Z]{1,3} ?)?(?=[A-Z0-9]*\d)[A-Z0-9]{5,20}(?: [A-Z]{2}\b)?)\b"
     ), None),
     # Names the model scores low: after a title or greeting, and "M. Rossi".
     ("PERSONA", re.compile(rf"\b{_TITLE} (?P<v>{_NAME}(?: {_NAME}){{0,2}})"), None),
     ("PERSONA", re.compile(rf"(?<![\w.])[A-Z]\. [{_UP}][a-zà-ÿ'’]{{2,}}"), None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
-    ("TARGA", re.compile(r"\b[A-Z]{2}[ -]?\d{3}[ -]?[A-Z]{2}\b"), None),
+    ("TARGA", re.compile(  # car plates; after "targa": motorcycle AB 12345, old ROMA A12345
+        r"\b[A-Z]{2}[ -]?\d{3}[ -]?[A-Z]{2}\b|(?i:\btarg(?:a|at[oa])\b|\bplate\b)\W{0,12}"
+        r"(?P<v>(?:[A-Z]{2}|ROMA)[ -]?(?=[A-Z]?\d)[A-Z0-9]{5,6})\b"
+    ), None),
     ("INDIRIZZO", re.compile(
         rf"\b{_STREET}\s+[\w'’. ]{{1,40}}?,?\s*(?:n\.\s*)?\d+[A-Za-z]?(?:/\w+)?\b(?![./-]\d)"
         rf"(?:,?\s*(?:int\.?|interno|scala|sc\.|piano)\s*\w+)*(?:[\s,–-]+{_CAP_CITY})?"

@@ -229,6 +229,50 @@ IBAN  I T 6 0 X 0 5 4 2 8 1 1 1 0 1 0 0 0 0 0 0 1 2 3 4 5 6
     assert leaks(text, "FRRGLI90A41L781O", "01011990", IBAN) == []
 
 
+def test_health_and_social_security_numbers(tmp_path):
+    cards = """Scheda iscrizione: Kevin Hoxha
+Tessera sanitaria n. 80380000001234567890
+
+PATIENT NOTE: Mr Oleksandr KOVALENKO, NHS No: 943 476 5919
+
+Hi Kevin,
+
+Payroll needs these for Liam O'Brien before Friday:
+SSN 123-45-6789
+"""
+    text = published(tmp_path, {"schede.txt": cards})
+    assert leaks(text, "80380000001234567890", "943 476 5919", "123-45-6789") == []
+
+
+def test_motorcycle_and_old_province_plates(tmp_path):
+    report = """CONSTATAZIONE AMICHEVOLE - note del perito
+
+Veicolo A: Fiat 500 d'epoca targa ROMA A12345.
+Veicolo B: motociclo targa AB 12345, conducente Li Na.
+Il papà arriva in moto (targa AC 54321) e parcheggia nel cortile.
+"""
+    text = published(tmp_path, {"constatazione.txt": report})
+    assert leaks(text, "AB 12345", "AC 54321", "A12345") == []
+
+
+def test_all_caps_address(tmp_path):
+    card = """# REPUBBLICA ITALIANA - CARTA DI IDENTITÀ
+
+**N. CA12345AB**
+
+COGNOME / SURNAME: SOLE
+NOME / NAME: BIANCA
+LUOGO E DATA DI NASCITA: ROMA (RM) 01.01.1985
+SESSO: F   STATURA: 168   CITTADINANZA: ITA
+INDIRIZZO DI RESIDENZA: VIA APPIA NUOVA 1021 ROMA (RM)
+CODICE FISCALE: SLO BNC 85A41 H501C
+SCADENZA: 01.01.2034
+
+Firma del titolare: Bianca Sole
+"""
+    assert leaks(published(tmp_path, {"carta_identita.md": card}), "VIA APPIA NUOVA 1021") == []
+
+
 def test_us_phone_without_keyword(tmp_path):
     mail = """Hi Kevin,
 
@@ -245,3 +289,24 @@ def test_landline_with_spaced_slash(tmp_path):
 Chiamate ore pasti allo 051 / 22 33 44 (chiedere di Giulia).
 """
     assert leaks(published(tmp_path, {"annuncio.txt": ad}), "051 / 22 33 44") == []
+
+
+def test_email_with_apostrophe(tmp_path):
+    mail = """Payroll needs the personal email of the new hire: liam.o'brien@fintrail.co.uk
+Please add it to the onboarding sheet.
+"""
+    assert leaks(published(tmp_path, {"mail.txt": mail}), "liam.o'") == []
+
+
+def test_spaced_electronic_id_card_number(tmp_path):
+    form = """CENTRO ESTIVO "IL GIRASOLE" - SCHEDA DI ISCRIZIONE 2025
+
+Bambino/a: Kevin Hoxha
+Allergie: nessuna
+
+Genitore 1: Elira Hoxha, cell. 389/1122334, elira.hoxha@libero.it
+Genitore 2: Arben Hoxha, documento: CA 98765 BD
+Ritiro autorizzato anche a: nonna Drita (vicina di casa, Via Gramsci 8, Fano)
+"""
+    text = published(tmp_path, {"iscrizione.txt": form})
+    assert not re.search(r"\bBD\b", text), text
