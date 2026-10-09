@@ -79,10 +79,11 @@ def norm(value: str) -> str:
 
 
 def _pattern(values) -> re.Pattern:
-    """Whole-word, case-insensitive, whitespace-tolerant match of any value, longest first."""
+    """Whole-word ("_" separates: CI_<value>.pdf), case-insensitive, whitespace-tolerant match
+    of any value, longest first."""
     # ponytail: one big alternation, O(text x values); Aho-Corasick if entities reach ~1e5
     alts = (r"\s+".join(map(re.escape, v.split())) for v in sorted(values, key=len, reverse=True))
-    return re.compile(rf"(?<!\w)(?:{'|'.join(alts)})(?!\w)", re.IGNORECASE)
+    return re.compile(rf"(?<![^\W_])(?:{'|'.join(alts)})(?![^\W_])", re.IGNORECASE)
 
 
 def _lookup(table: dict, m: re.Match) -> str:

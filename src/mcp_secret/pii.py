@@ -56,13 +56,33 @@ def _piva_ok(s: str) -> bool:
     return sum(x if i % 2 == 0 else sum(divmod(2 * x, 10)) for i, x in enumerate(d)) % 10 == 0
 
 
+# IBAN length per country (SWIFT registry). ponytail: add a country here when it joins.
+_IBAN_LEN = {c: int(n) for c, n in re.findall(r"(\w\w)(\d\d)", """AD24 AE23 AL28 AT20 AZ28 BA20 BE16 BG22 BH22 BI27 BR29
+BY28 CH21 CR22 CY28 CZ24 DE22 DJ27 DK18 DO28 EE20 EG29 ES24 FI18 FK18 FO18 FR27 GB22 GE22 GI23 GL18
+GR27 GT28 HN28 HR21 HU28 IE22 IL23 IQ23 IS26 IT27 JO30 KW30 KZ20 LB28 LC32 LI21 LT20 LU20 LV21 LY25
+MC27 MD24 ME22 MK19 MN20 MR27 MT31 MU30 NI28 NL18 NO15 OM23 PK24 PL28 PS29 PT25 QA29 RO24 RS22 RU33
+SA24 SC31 SD18 SE24 SI19 SK24 SM27 SO23 ST25 SV28 TL23 TN24 TR26 UA29 VA22 VG24 XK20 YE30""")}
+
+
 def _iban_ok(s: str) -> bool:
-    s = s.replace(" ", "")
-    return 15 <= len(s) <= 34 and int("".join(str(int(c, 36)) for c in s[4:] + s[:4])) % 97 == 1
+    """`s`: letters and digits only. Registry length, then mod 97."""
+    s = s.upper()
+    return len(s) == _IBAN_LEN.get(s[:2]) and int("".join(str(int(c, 36)) for c in s[4:] + s[:4])) % 97 == 1
+
+
+def _alnum(s: str) -> str:
+    return re.sub(r"[\W_]", "", s)
 
 
 # --- rules ----------------------------------------------------------------------------------
 _OMO = r"[\dLMNP-V]"
+# What can sit between two characters of one identifier: grouping (space, NBSP after clean(),
+# dot, dash, slash), a padded table cell border ("| R   | S   |"), a line wrap. Rules validate
+# the value with its separators removed, so the checksum keeps the precision.
+_SEP = r"\s*+[.|/-]?+\s*+"  # possessive: linear on padded table cells
+# The CF rule is letter by letter: "RSS MRA 80A01 H501U", "R S S M R A ...", "RSSMRA80A0 1H501U".
+_CF = _SEP.join([r"[A-Z]"] * 6 + [_OMO] * 2 + ["[A-EHLMPR-T]"] + [_OMO] * 2 + ["[A-Z]"] + [_OMO] * 3 + ["[A-Z]"])
+_B, _E = r"(?<![^\W_])", r"(?![^\W_])"  # word boundaries where "_" is a separator (CI_<CF>.pdf)
 _DATE = (
     r"(?:\d{1,2}(?P<sep>[./-])\d{1,2}(?P=sep)(?:\d{4}|\d{2})|\d{4}-\d{2}-\d{2}"
     r"|\d{1,2}°?\s+(?i:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec)"
@@ -86,8 +106,8 @@ _TITLE = (
 )
 _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _RULES = [
-    ("CF", re.compile(rf"(?i)\b[A-Z]{{6}}{_OMO}{{2}}[A-EHLMPR-T]{_OMO}{{2}}[A-Z]{_OMO}{{3}}[A-Z]\b"), _cf_ok),
-    ("PIVA", re.compile(r"(?<![\w+])(?:IT ?)?\d{11}(?!\w)"), _piva_ok),
+    ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
+    ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d{{11}}{_E}"), _piva_ok),
     ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-]{1,64}@[\w-]+(?:\.[\w-]+)+"), None),  # anchored: no O(n²)
     ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"
         rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?\b(?P<v>{_DATE})"
@@ -109,7 +129,8 @@ _RULES = [
         rf"|\b{_CAP_CITY}"
     ), None),
 ]
-_IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30}")
+# Lookahead: candidates may overlap (two IBANs in one table row), _ibans keeps the first.
+_IBAN = re.compile(rf"(?i){_B}(?=([A-Z]{_SEP}[A-Z]{_SEP}\d{_SEP}\d(?:{_SEP}[A-Z0-9]){{11,30}}))")
 _PHONE = re.compile(r"(?<![\w+(/,-])(?<!\d\.)\(?\+?\d+\)?(?:[ ./-]?\(?\d+\)?)*")
 _PHONE_TOK = re.compile(r"\(?\+?\d+\)?")
 _PHONE_CTX = re.compile(r"(?i)\b(?:tel|cell|phone|fax|mob|recapit|numero|whatsapp)\w*\W{0,12}$")
@@ -146,13 +167,15 @@ def _phones(text: str):
 
 
 def _ibans(text: str):
-    """Greedy candidate, then the longest prefix ending on a group that passes mod 97."""
+    """Candidate from each word start, cut at its country's length; any case, any grouping."""
+    done = 0
     for m in _IBAN.finditer(text):
-        s = m.group()
-        for end in range(len(s), 14, -1):
-            if (end == len(s) or s[end] == " ") and _iban_ok(s[:end]):
-                yield Span(m.start(), m.start() + end, "IBAN")
-                break
+        pos = [m.start() + i for i, c in enumerate(m[1]) if c.isalnum()]
+        n = _IBAN_LEN.get((text[pos[0]] + text[pos[1]]).upper(), 0)
+        if (m.start() >= done and _iban_ok("".join(text[i] for i in pos[:n]))
+                and not text[pos[n - 1] + 1 : pos[n - 1] + 2].isalnum()):  # ends where a word does
+            done = pos[n - 1] + 1
+            yield Span(m.start(), done, "IBAN")
 
 
 def _table_births(text: str):
