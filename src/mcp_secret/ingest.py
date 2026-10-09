@@ -66,8 +66,16 @@ def parse(path: Path) -> str:
     return f"{head}\n\n{body}"
 
 
+def clean(text: str) -> str:
+    """The text that is detected and published: invisible format characters (zero-width, soft
+    hyphen) dropped, compatibility forms (fullwidth, NBSP) folded. NFKC output is NFC too."""
+    # ponytail: homoglyphs (a Cyrillic letter in a CF) stay; add a confusables fold if needed
+    return unicodedata.normalize("NFKC", "".join(c for c in text if unicodedata.category(c) != "Cf"))
+
+
 def norm(value: str) -> str:
-    return " ".join(value.split()).lower()
+    # "İ".lower() is "i" + U+0307, which an IGNORECASE pattern built from it never matches
+    return " ".join(value.split()).lower().replace("i\u0307", "i")
 
 
 def _pattern(values) -> re.Pattern:
@@ -151,7 +159,7 @@ def chunk(text: str, size: int = 1500) -> list[str]:
 def _lines(path: Path) -> list[str]:
     if not path.exists():
         return []
-    lines = (unicodedata.normalize("NFC", s).strip() for s in path.read_text().splitlines())
+    lines = (clean(s).strip() for s in path.read_text().splitlines())
     return [s for s in lines if s]
 
 
@@ -168,7 +176,7 @@ def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str]) -> str:
     row = con.execute("SELECT id, sha256 FROM docs WHERE path = ?", (str(path),)).fetchone()
     if row and row[1] == sha:
         return f"{row[0]}\tunchanged"
-    text = unicodedata.normalize("NFC", parse(path))
+    text = clean(parse(path))
     spans = pii.detect(text)  # slow part, outside the write lock
     doc_id = row[0] if row else secrets.token_hex(8)
     new: dict[str, str] = {}
