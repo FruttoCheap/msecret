@@ -27,6 +27,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS pub.chunks
     USING fts5(doc_id UNINDEXED, seq UNINDEXED, text, tokenize="unicode61 tokenchars '_'");
 INSERT INTO pub.chunks(chunks, rank) VALUES ('secure-delete', 1);
 """
+_TOKEN = r"(?-i:\[[A-Z]+(?:_[A-Z]+)*_\d+\])"
+# What the model tags but is no entity: a type label ("IBAN", "Telefono"), a bare short number.
+# As an entity it would be masked in every document.
+_NOISE = re.compile(r"(?i)\d{1,3}|persona|org|luogo|indirizzo|cf|piva|iban|e-?mail|telefono|targa"
+                    r"|documento|data di nascita")
 
 
 @functools.cache
@@ -102,10 +107,16 @@ def norm(value: str) -> str:
 
 def _pattern(values) -> re.Pattern:
     """Whole-word ("_" separates: CI_<value>.pdf), case-insensitive, whitespace-tolerant match
-    of any value, longest first."""
+    of any value, longest first. A [TYPE_N] token matches first and whole, so no value match
+    starts inside one: use _hits()."""
     # ponytail: one big alternation, O(text x values); Aho-Corasick if entities reach ~1e5
     alts = (r"\s+".join(map(re.escape, v.split())) for v in sorted(values, key=len, reverse=True))
-    return re.compile(rf"(?<![^\W_])(?:{'|'.join(alts)})(?![^\W_])", re.IGNORECASE)
+    return re.compile(rf"{_TOKEN}|(?<![^\W_])(?P<v>{'|'.join(alts)})(?![^\W_])", re.IGNORECASE)
+
+
+def _hits(pat: re.Pattern, text: str) -> list[re.Match]:
+    """Value matches of a _pattern(), never inside a published token ([TELEFONO_1] stays)."""
+    return [m for m in pat.finditer(text) if m["v"]]
 
 
 def _lookup(table: dict, m: re.Match) -> str:
@@ -140,11 +151,11 @@ def _apply(text: str, cands: list[tuple[int, int, str]]) -> str:
 
 def mask(con: sqlite3.Connection, text: str, spans: list, allow: set[str], new: dict) -> str:
     """Detected spans plus every known value (sweep) become [TYPE_N] tokens."""
-    cands = [(s.start, s.end, _token(con, s.type, text[s.start:s.end], new))
-             for s in spans if norm(text[s.start:s.end]) not in allow]
+    cands = [(s.start, s.end, _token(con, s.type, v, new)) for s in spans
+             if norm(v := text[s.start:s.end]) not in allow and not _NOISE.fullmatch(v)]
     known = {v: t for v, t in con.execute("SELECT value, token FROM entities") if v not in allow}
     if known:
-        cands += [(m.start(), m.end(), _lookup(known, m)) for m in _pattern(known).finditer(text)]
+        cands += [(m.start(), m.end(), _lookup(known, m)) for m in _hits(_pattern(known), text)]
     return _apply(text, cands)
 
 
@@ -160,11 +171,11 @@ def sweep(con: sqlite3.Connection, new: dict) -> None:
                                  (query,)).fetchall():
         rows = con.execute("SELECT rowid, text FROM pub.chunks WHERE doc_id = ? ORDER BY seq",
                            (doc_id,)).fetchall()
-        cuts = [[(m.start(), m.end(), _lookup(new, m)) for m in pat.finditer(t)] for _, t in rows]
+        cuts = [[(m.start(), m.end(), _lookup(new, m)) for m in _hits(pat, t)] for _, t in rows]
         for i in range(len(rows) - 1):
             a, b = rows[i][1], rows[i + 1][1]
             h = len(b.split("\n\n", 1)[0]) + 2 if b.startswith("#") and "\n\n" in b else 0
-            for m in pat.finditer(f"{a}\n{b[h:]}"):  # across the boundary, past b's heading prefix
+            for m in _hits(pat, f"{a}\n{b[h:]}"):  # across the boundary, past b's heading prefix
                 if m.start() < len(a) < m.end():
                     cuts[i].append((m.start(), len(a), _lookup(new, m)))
                     cuts[i + 1].append((h, h + m.end() - len(a) - 1, _lookup(new, m)))
