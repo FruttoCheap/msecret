@@ -75,6 +75,7 @@ def main() -> None:
     sub.add_parser("show", help="print what the agent sees of a document").add_argument("doc_id")
     args = ap.parse_args()
     root = home()
+    os.environ["MCP_SECRET_HOME"] = str(root)  # absolute for the re-exec (serve chdirs to /)
     db = root / "public" / "public.db"
     if args.cmd in ("show", "serve") and not db.exists():
         sys.exit("no index yet: run `mcp-secret ingest <path>` first")
