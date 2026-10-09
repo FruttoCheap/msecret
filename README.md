@@ -30,7 +30,7 @@ uv run mcp-secret show 3f9c0a1b2c3d4e5f         # exactly what the agent sees
 ```
 
 Formats: PDF, DOCX, XLSX, PPTX, HTML, MD, images (OCR), EML, TXT. Unchanged files are skipped;
-changed files replace their chunks.
+changed files replace their chunks; files deleted or moved out of an ingested folder lose theirs.
 
 The data root is `~/Library/Application Support/mcp-secret` (override with `MCP_SECRET_HOME`):
 

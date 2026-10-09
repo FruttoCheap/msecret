@@ -131,6 +131,26 @@ def test_deny_entry_with_dotted_capital_i(tmp_path):
     assert "İnce" not in text
 
 
+def test_late_value_cut_by_a_chunk_boundary(tmp_path):
+    words = ["lorem", "ipsum", "dolor", "sit", "amet", "elit", "sed", "tempor"]
+    lines = [f"tiepidona {' '.join(words[(i + j) % 8] for j in range(12))} frittatona"
+             for i in range(40)]  # one ~4000-char block of hard-wrapped lines, like a plain email
+    for head in ["", "# Verbale\n\n"]:  # chunks after the first repeat the heading
+        docs = {"verbale.txt": head + "\n".join(lines) + "\n"}
+        published(tmp_path / head[:1], docs)
+        text = published(tmp_path / head[:1], docs, deny="frittatona tiepidona\n")  # learned late
+        assert not re.search(r"frittatona\s+(# Verbale\s+)?tiepidona", text), head
+
+
+def test_deleted_file_takes_its_chunks_along(tmp_path):
+    text = published(tmp_path, {"keep.txt": "Lorem ipsum dolor sit amet, consectetur adipiscing.\n",
+                                "gone.txt": "Sed ut perspiciatis unde omnis iste natus error.\n"})
+    assert "perspiciatis" in text  # stands for a value the detector missed, spotted with `show`
+    (tmp_path / "docs" / "gone.txt").unlink()
+    text = published(tmp_path)
+    assert "perspiciatis" not in text and "Lorem" in text
+
+
 def test_iban_in_lowercase(tmp_path):
     text = published(tmp_path, {"bonifico.txt": f"Gentile cliente,\n\naccreditare l'importo "
                                                 f"sull'IBAN {IBAN.lower()}.\n"})

@@ -149,16 +149,28 @@ def mask(con: sqlite3.Connection, text: str, spans: list, allow: set[str], new: 
 
 
 def sweep(con: sqlite3.Connection, new: dict) -> None:
-    """Mask newly learned values in chunks already published (FTS finds the candidates)."""
+    """Mask newly learned values in chunks already published, also where a chunk boundary cuts
+    one in two. FTS on any of their words finds the candidate documents."""
+    # ponytail: a value glued to "_" in an old chunk (ci_<value>) is one FTS term, not found here
     if not new:
         return
     pat = _pattern(new)
-    query = " OR ".join('"' + v.replace('"', '""') + '"' for v in new)
-    for rowid, text in con.execute("SELECT rowid, text FROM pub.chunks WHERE chunks MATCH ?",
-                                   (query,)).fetchall():
-        masked = pat.sub(lambda m: _lookup(new, m), text)
-        if masked != text:
-            con.execute("UPDATE pub.chunks SET text = ? WHERE rowid = ?", (masked, rowid))
+    query = " OR ".join('"' + w.replace('"', '""') + '"' for v in new for w in v.split())
+    for (doc_id,) in con.execute("SELECT DISTINCT doc_id FROM pub.chunks WHERE chunks MATCH ?",
+                                 (query,)).fetchall():
+        rows = con.execute("SELECT rowid, text FROM pub.chunks WHERE doc_id = ? ORDER BY seq",
+                           (doc_id,)).fetchall()
+        cuts = [[(m.start(), m.end(), _lookup(new, m)) for m in pat.finditer(t)] for _, t in rows]
+        for i in range(len(rows) - 1):
+            a, b = rows[i][1], rows[i + 1][1]
+            h = len(b.split("\n\n", 1)[0]) + 2 if b.startswith("#") and "\n\n" in b else 0
+            for m in pat.finditer(f"{a}\n{b[h:]}"):  # across the boundary, past b's heading prefix
+                if m.start() < len(a) < m.end():
+                    cuts[i].append((m.start(), len(a), _lookup(new, m)))
+                    cuts[i + 1].append((h, h + m.end() - len(a) - 1, _lookup(new, m)))
+        for (rowid, text), c in zip(rows, cuts):
+            if c:
+                con.execute("UPDATE pub.chunks SET text = ? WHERE rowid = ?", (_apply(text, c), rowid))
 
 
 def chunk(text: str, size: int = 1500) -> list[str]:
@@ -192,6 +204,18 @@ def files(paths: list[Path]):
             yield from sorted(f for f in p.rglob("*") if f.is_file() and f.suffix.lower() in SUFFIXES)
         else:
             yield p
+
+
+def prune(con: sqlite3.Connection, folders: list[Path]) -> None:
+    """Forget documents whose file is gone from an ingested folder (deleted or moved)."""
+    for doc_id, path in con.execute("SELECT id, path FROM docs").fetchall():
+        p = Path(path)
+        if not p.exists() and any(d in p.parents for d in folders):
+            with con:
+                con.execute("BEGIN IMMEDIATE")
+                con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
+                con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
+            print(f"{doc_id}\tremoved\t{path}", flush=True)
 
 
 def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str]) -> str:
@@ -229,6 +253,7 @@ def run(root: Path, paths: list[Path]) -> int:
             # ponytail: deny.txt values are typed PERSONA, add a "TYPE:" prefix if others need it
             _token(con, "PERSONA", v, new)
         sweep(con, new)
+    prune(con, [p.resolve() for p in paths if p.is_dir()])
     failed = 0
     for path in files(paths):
         try:
