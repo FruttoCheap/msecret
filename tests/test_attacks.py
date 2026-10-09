@@ -8,7 +8,6 @@ from pathlib import Path
 
 import docx
 import openpyxl
-import pytest
 from test_leak import _pdf
 
 from mcp_secret import ingest
@@ -272,10 +271,6 @@ Oggetto: diffida
     assert leaks(published(tmp_path, {"diffida.txt": letter}), "GENNARO", "ESPOSITO") == []
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "masking each part of a full name would make every surname a corpus-wide entity: the sweep "
-    "is global and case-insensitive, so names that are words (Costa, Grande, Porta, Russo) would "
-    "be masked as words in every document; needs a per-document scope entities do not have"))
 def test_lone_surname_after_full_name(tmp_path):
     minutes = """CONDOMINIO "GIARDINO" - VIA NIZZA 45, TORINO
 VERBALE DI ASSEMBLEA ORDINARIA DEL 14/03/2025

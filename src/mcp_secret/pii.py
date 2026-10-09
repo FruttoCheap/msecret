@@ -1,7 +1,7 @@
 """PII detection. The only contract between the pipeline (A1) and the detector (A2).
 
 Checksum-validated rules for structured identifiers, GLiNER for names/orgs/places/addresses,
-plus cheap name/place heuristics. Fusion: overlapping spans of the same type merge; across
+plus cheap name/place heuristics and a full name's words wherever else the text has them. Fusion: overlapping spans of the same type merge; across
 types rules beat the model, then the longest wins, and a span cut by one already kept keeps its
 uncovered rest. Metrics and model choice: fixtures/README.md.
 """
@@ -103,11 +103,12 @@ _STREET = rf"(?:{_STREET}|{_STREET.upper()}|via|viale|piazza|corso)"  # VIA APPI
 _UP = "A-ZÀ-ÖØ-ÞĀ-žȘ-ț"  # uppercase Latin, give or take (re has no \p{Lu})
 _CITY = rf"[{_UP}][\w'’]*(?:[ -](?:[a-zà-ÿ]{{1,5}}['’]?\s?)?[{_UP}][\w'’]*)*"
 _CAP_CITY = rf"\d{{5}},?\s+{_CITY}(?:\s*\([A-Z]{{2}}\))?"
+# A field or table column holding a name.
+_LABEL = (r"Cognome|Nome|Nome e cognome|Cognome e nome|Nominativo|Intestatario|Dipendente|Referenze"
+          r"|References?|Surname|(?:First |Last |Full )?[Nn]ame")
 _TITLE = (
     r"(?:Sig(?:\.ra|\.na|\.)|Dott(?:\.ssa|\.)|Avv\.|Ing\.|Prof(?:\.ssa|\.)|Geom\.|Rag\.|Arch\."
-    r"|Mr\.|Mrs\.|Ms\.|Dr\.|Gent(?:\.mo|\.ma|ile)|Egregi[oa]|Car[oa]|Ciao|Dear|Hi|Hello"
-    r"|(?:Cognome|Nome|Nome e cognome|Cognome e nome|Nominativo|Intestatario|Surname"
-    r"|(?:First |Last |Full )?[Nn]ame):)"
+    rf"|Mr\.|Mrs\.|Ms\.|Dr\.|Gent(?:\.mo|\.ma|ile)|Egregi[oa]|Car[oa]|Ciao|Dear|Hi|Hello|(?:{_LABEL}):)"
 )
 _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _RULES = [
@@ -165,6 +166,9 @@ _PHONE = re.compile(r"(?<![^\W_])(?<![+(/-])(?<!\d\.)\(?\+?\d+\)?(?:(?: ?[./-] ?
 _PHONE_TOK = re.compile(r"\(?\+?\d+\)?")
 _PHONE_CTX = re.compile(r"(?i)\b(?:tel|cell|phone|fax|mob|recapit|numero|whatsapp)\w*\W{0,12}$")
 _TABLE = re.compile(r"(?m)^\|.*\n(?:\|.*(?:\n|$))+")
+_ROW = re.compile(r"(?m)^\|.*")
+_NAME_COL = re.compile(rf"\s*(?i:{_LABEL})\s*")
+_PART = re.compile(rf"[{_UP}][^\W\d_]*(?:['’-][^\W\d_]+)*")  # one word of a name: Rossi, D'Amico
 
 
 def _phone_ok(s: str, before: str) -> bool:
@@ -210,14 +214,23 @@ def _ibans(text: str):
             yield Span(m.start(), done, "IBAN")
 
 
-def _table_births(text: str):
+def _tables(text: str):
     # ponytail: every date of a markdown table whose header mentions birth; per column if noisy.
     for t in _TABLE.finditer(text):
         head = t.group().split("\n", 1)
+        off = t.start() + len(head[0]) + 1
         if re.search(r"(?i)nascit|birth|\bnat[oa]\b|\bd\.?o\.?b\b", head[0]):
-            off = t.start() + len(head[0]) + 1
             for m in re.finditer(_DATE, head[1]):
                 yield Span(off + m.start(), off + m.end(), "DATA_NASCITA")
+        # Every cell under a name header ("| Dipendente |" over "| PACE TELEMACO |").
+        # ponytail: "| Nome |" over products masks products too; a stricter header list if noisy
+        cols = {i for i, h in enumerate(head[0].split("|")) if _NAME_COL.fullmatch(h)}
+        for row in _ROW.finditer(text, off, t.end()) if cols else ():
+            a = row.start()
+            for i, cell in enumerate(row[0].split("|")):
+                if i in cols and (m := re.search(r"[^\W\d_](?:.*\S)?", cell)):
+                    yield Span(a + m.start(), a + m.end(), "PERSONA")
+                a += len(cell) + 1
 
 
 _DASHES = "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"
@@ -243,7 +256,21 @@ def _rules(text: str):
                 yield Span(m.start(g), m.end(g), t)
     yield from _ibans(text)
     yield from _phones(text)
-    yield from _table_births(text)
+    yield from _tables(text)
+
+
+def _parts(text: str, spans: list[Span]):
+    """Each word (3+ letters) of a full name wherever this text has it capitalized or ALL-CAPS:
+    "Rossi" or "ROSSI" after "Mario Rossi". This text only: corpus-wide, a surname like Costa
+    would mask the word everywhere (ingest gives a part the full name's token, no entity)."""
+    parts = set()
+    for s in spans:
+        v = text[s.start : s.end]
+        if s.type == "PERSONA" and "\n" not in v and len(v.split()) > 1:
+            parts.update(w for w in v.split() if len(w) >= 3 and _PART.fullmatch(w))
+    if parts:
+        rx = re.compile(rf"{_B}(?:{'|'.join(map(re.escape, parts))}){_E}", re.IGNORECASE)
+        yield from (Span(m.start(), m.end(), "PERSONA") for m in rx.finditer(text) if m[0][0].isupper())
 
 
 # --- model ----------------------------------------------------------------------------------
@@ -296,6 +323,7 @@ def fetch_models() -> None:
 def detect(text: str) -> list[Span]:
     """Return sorted, non-overlapping spans. Never logs or returns anything but offsets/types."""
     cands = [(0, s) for s in _rules(text)] + [(1, s) for s in _ner(text)]
+    cands += [(1, s) for s in _parts(text, [s for _, s in cands])]
     # Overlapping spans of the same type are one value: take the union (a rule's partial
     # address plus the model's full one must not leave the rest exposed).
     cands.sort(key=lambda c: (c[1].type, c[1].start))

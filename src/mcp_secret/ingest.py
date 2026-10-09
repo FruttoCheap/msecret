@@ -150,9 +150,17 @@ def _apply(text: str, cands: list[tuple[int, int, str]]) -> str:
 
 
 def mask(con: sqlite3.Connection, text: str, spans: list, allow: set[str], new: dict) -> str:
-    """Detected spans plus every known value (sweep) become [TYPE_N] tokens."""
-    cands = [(s.start, s.end, _token(con, s.type, v, new)) for s in spans
-             if norm(v := text[s.start:s.end]) not in allow and not _NOISE.fullmatch(v)]
+    """Detected spans plus every known value (sweep) become [TYPE_N] tokens. A one-word name
+    that is a word of a full name in this text ("Rossi" after "Mario Rossi") takes that name's
+    token and is no entity: swept through every document, the surname Costa would mask coasts."""
+    keep = [(s, v) for s in spans
+            if norm(v := text[s.start:s.end]) not in allow and not _NOISE.fullmatch(v)]
+    full = {}  # ponytail: two full names sharing a word, the lone word takes the last one's token
+    for s, v in keep:
+        if s.type == "PERSONA" and len(words := norm(v).split()) > 1:
+            full.update(dict.fromkeys(words, _token(con, s.type, v, new)))
+    cands = [(s.start, s.end, (s.type == "PERSONA" and full.get(norm(v))) or _token(con, s.type, v, new))
+             for s, v in keep]
     known = {v: t for v, t in con.execute("SELECT value, token FROM entities") if v not in allow}
     if known:
         cands += [(m.start(), m.end(), _lookup(known, m)) for m in _hits(_pattern(known), text)]

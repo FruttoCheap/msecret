@@ -5,8 +5,9 @@ import sqlite3
 
 import docx
 from test_attacks import CF, IBAN, leaks, published
+from test_pii import generate
 
-from mcp_secret import server
+from mcp_secret import pii, server
 
 TOKEN = re.compile(r"\[[A-Z]+(?:_[A-Z]+)*_\d+\]")
 
@@ -85,3 +86,38 @@ Instagram: rosa.leone@gmail.com
     assert leaks(text, "123 45 6789", "393337654321", "3331234567", "100000012345",
                  "mariorossi88", "giulia.verdi", "sole_luna_77", "rosa.leone") == []
     assert not re.search(r"\[PERSONA_\d+\]:? *\[EMAIL_", text), text  # an email is masked once
+
+
+def test_lone_first_name_after_full_name(tmp_path):
+    mail = """Ciao Stefania,
+
+ti inoltro i dati di Mastroianni Fortuna per l'apertura della pratica.
+
+Ho sentito Fortuna stamattina: preferisce essere contattata via mail. Lo stesso per
+Paoletta Valle, che mi ha scritto ieri. Paoletta arriva lunedì.
+"""
+    assert leaks(published(tmp_path, {"mail.txt": mail}), "sentito Fortuna", "Paoletta arriva") == []
+
+
+def test_names_the_seed5_e2e_run_leaked():
+    """Lone parts of a full name, a name after "Referenze:", an ALL-CAPS table row."""
+    docs = {d["name"]: d for d in generate(5, 30)}
+    leaked = {"02_mail": "Paoletta", "09_mail": "Fortuna", "16_mail": "Bianca", "10_cv": "Bianca",
+              "19_verbale": "Chittolini", "23_mail": "Célina", "24_cv": "Ambra Orengo",
+              "25_busta": "PACE TELEMACO"}
+    missed = []
+    for name, value in leaked.items():
+        text = docs[name]["text"]
+        covered = bytearray(len(text))
+        for s in pii.detect(text):
+            covered[s.start : s.end] = b"\1" * (s.end - s.start)
+        missed += [(name, value, g["start"]) for g in docs[name]["spans"] if g["text"] == value
+                   and not all(covered[i] for i in range(g["start"], g["end"]) if text[i].isalnum())]
+    assert missed == []
+
+
+def test_lone_name_parts_stay_in_their_document(tmp_path):
+    a = "Il contratto è firmato dal sig. Marco Costa, nato a Genova. Costa riceverà le chiavi.\n"
+    b = "Il pacchetto costa poco e la spedizione costa meno del previsto.\n"
+    text = published(tmp_path, {"a.txt": a, "b.txt": b})
+    assert "Costa riceverà" not in text and "costa poco" in text and "costa meno" in text, text
