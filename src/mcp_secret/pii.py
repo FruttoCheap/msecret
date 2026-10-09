@@ -2,7 +2,8 @@
 
 Checksum-validated rules for structured identifiers, GLiNER for names/orgs/places/addresses,
 plus cheap name/place heuristics. Fusion: overlapping spans of the same type merge; across
-types rules beat the model, then the longest wins. Metrics and model choice: fixtures/README.md.
+types rules beat the model, then the longest wins, and a span cut by one already kept keeps its
+uncovered rest. Metrics and model choice: fixtures/README.md.
 """
 
 import bisect
@@ -53,17 +54,19 @@ def _piva_ok(s: str) -> bool:
 
 
 # IBAN length per country (SWIFT registry). ponytail: add a country here when it joins.
-_IBAN_LEN = {c: int(n) for c, n in re.findall(r"(\w\w)(\d\d)", """AD24 AE23 AL28 AT20 AZ28 BA20 BE16 BG22 BH22 BI27 BR29
-BY28 CH21 CR22 CY28 CZ24 DE22 DJ27 DK18 DO28 EE20 EG29 ES24 FI18 FK18 FO18 FR27 GB22 GE22 GI23 GL18
-GR27 GT28 HN28 HR21 HU28 IE22 IL23 IQ23 IS26 IT27 JO30 KW30 KZ20 LB28 LC32 LI21 LT20 LU20 LV21 LY25
-MC27 MD24 ME22 MK19 MN20 MR27 MT31 MU30 NI28 NL18 NO15 OM23 PK24 PL28 PS29 PT25 QA29 RO24 RS22 RU33
-SA24 SC31 SD18 SE24 SI19 SK24 SM27 SO23 ST25 SV28 TL23 TN24 TR26 UA29 VA22 VG24 XK20 YE30""")}
+_IBAN_LEN = {c: int(n) for c, n in re.findall(r"([A-Z]{2})(\d\d)", """
+AD24 AE23 AL28 AT20 AZ28 BA20 BE16 BG22 BH22 BI27 BR29 BY28 CH21 CR22 CY28 CZ24 DE22 DJ27 DK18 DO28
+EE20 EG29 ES24 FI18 FK18 FO18 FR27 GB22 GE22 GI23 GL18 GR27 GT28 HN28 HR21 HU28 IE22 IL23 IQ23 IS26
+IT27 JO30 KW30 KZ20 LB28 LC32 LI21 LT20 LU20 LV21 LY25 MC27 MD24 ME22 MK19 MN20 MR27 MT31 MU30 NI28
+NL18 NO15 OM23 PK24 PL28 PS29 PT25 QA29 RO24 RS22 RU33 SA24 SC31 SD18 SE24 SI19 SK24 SM27 SO23 ST25
+SV28 TL23 TN24 TR26 UA29 VA22 VG24 XK20 YE30""")}
 
 
 def _iban_ok(s: str) -> bool:
     """`s`: letters and digits only. Registry length, then mod 97."""
     s = s.upper()
-    return len(s) == _IBAN_LEN.get(s[:2]) and int("".join(str(int(c, 36)) for c in s[4:] + s[:4])) % 97 == 1
+    digits = "".join(str(int(c, 36)) for c in s[4:] + s[:4])
+    return len(s) == _IBAN_LEN.get(s[:2]) and int(digits) % 97 == 1
 
 
 def _alnum(s: str) -> str:
@@ -77,7 +80,8 @@ _OMO = r"[\dLMNP-V]"
 # the value with its separators removed, so the checksum keeps the precision.
 _SEP = r"\s*+[.|/-]?+\s*+"  # possessive: linear on padded table cells
 # The CF rule is letter by letter: "RSS MRA 80A01 H501U", "R S S M R A ...", "RSSMRA80A0 1H501U".
-_CF = _SEP.join([r"[A-Z]"] * 6 + [_OMO] * 2 + ["[A-EHLMPR-T]"] + [_OMO] * 2 + ["[A-Z]"] + [_OMO] * 3 + ["[A-Z]"])
+_CF = _SEP.join(["[A-Z]"] * 6 + [_OMO] * 2 + ["[A-EHLMPR-T]"] + [_OMO] * 2 + ["[A-Z]"]
+                + [_OMO] * 3 + ["[A-Z]"])
 _B, _E = r"(?<![^\W_])", r"(?![^\W_])"  # word boundaries where "_" is a separator (CI_<CF>.pdf)
 _MON = r"(?i:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec)[a-z]*\.?"
 _DAY = r"(?:\d{1,2}(?:°|st|nd|rd|th)?|(?i:primo))"  # 1°, 5th, "il primo maggio"
