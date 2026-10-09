@@ -5,3 +5,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 fixtures/out/
+.DS_Store
+.claude/
