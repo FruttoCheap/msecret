@@ -147,7 +147,8 @@ _RULES = [
     # Not an email's local part ("Instagram: x@y.it"): EMAIL masks that once.
     ("PERSONA", re.compile(
         r"(?i:\bfacebook\.com/profile\.php\?id=|\b(?:linkedin\.com/in|github\.com|gitlab\.com|t\.me"
-        r"|facebook\.com|fb\.com|fb\.me|instagram\.com|twitter\.com|x\.com|tiktok\.com|reddit\.com/u(?:ser)?|youtube\.com/(?:c|user))"
+        r"|facebook\.com|fb\.com|fb\.me|instagram\.com|twitter\.com|x\.com|tiktok\.com"
+        r"|reddit\.com/u(?:ser)?|youtube\.com/(?:c|user))"
         r"/@?|/@|\b(?:skype|telegram|insta(?:gram)?|ig|twitter|tiktok|facebook|fb|youtube|threads"
         r"|snapchat|discord|twitch|mastodon|bluesky)\b"
         r"(?::\s*(?:@|(?=[^\W\d_][\w.-]*(?:\d|[._]\w)))|\s+@))[\w./-]*\w(?![\w.-]*@)"), None),
@@ -159,9 +160,8 @@ _RULES = [
     # A word or two in between ("conto deposito n. 12345678", "c/c BancoPosta 001234567890"),
     # then a number marker or 8+ digits. ponytail: "il conto è di 15000000" is masked too (noise).
     ("IBAN", re.compile(rf"{_ACCOUNT}(?:[ \t]+[^\W\d_][\w'’-]*){{1,2}}?(?:[ \t]*(?i:\b(?:n|no|nr"
-                        rf"|num|numero|number|id)\b\.?|[:#°])[\s|:.#°]*|[ \t]+(?=\d(?:[ -]?\d){{7}}))"
-                        rf"(?P<v>{_ACC_NO})\b"),
-     None),
+                        r"|num|numero|number|id)\b\.?|[:#°])[\s|:.#°]*"
+                        rf"|[ \t]+(?=\d(?:[ -]?\d){{7}}))(?P<v>{_ACC_NO})\b"), None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
     ("TARGA", re.compile(  # car plates; after "targa": motorcycle AB 12345, old ROMA A12345

@@ -43,7 +43,8 @@ def profile(root: Path | None = None) -> str:
     return sbpl + "".join([
         f"(deny file-read* {_any('subpath', docs)})",
         # a write outside the box (a binary, a shell rc) runs later unsandboxed
-        '(deny file-write*)(allow file-write-data (literal "/dev/null") (literal "/dev/dtracehelper"))',
+        "(deny file-write*)",
+        '(allow file-write-data (literal "/dev/null") (literal "/dev/dtracehelper"))',
         # SQLite lstat()s every path component when opening public.db
         f"(allow file-read-metadata {_any('literal', pub.parents)})",
         f"(allow file-read* {_any('subpath', [pub, *sorted(runtime)])})",
