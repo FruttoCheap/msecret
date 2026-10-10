@@ -60,7 +60,8 @@ new documents and scrubbed from those already indexed.
 - Known detector limits, left to that hand check: name parts in lowercase, OCR-garbled values,
   surname columns of plain CSV files, UK National Insurance and Turkish TC Kimlik numbers,
   foreign street lines, label phrases the model tags as places, 8-digit staff numbers in birth
-  tables, `/@word` URL paths, `Vite,0,0312345678`.
+  tables, `/@word` URL paths, `Vite,0,0312345678`, an 8-digit landline after a number with a
+  comma (`Bianchi 7,03456789` reads as an amount).
 - The sandbox cannot hide `sysctl KERN_PROCARGS2` (no sandbox rule gates it): a compromised
   `serve` could read the command lines of your other processes, and the environment of those
   without hardened runtime, and return them to the agent. Keep secrets out of the environment
