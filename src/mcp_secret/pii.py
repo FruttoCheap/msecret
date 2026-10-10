@@ -115,14 +115,16 @@ _TITLE = (
 _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _ACCOUNT = r"(?i:\bc/c\b|\bconto\b|\baccount\b)"
 _ACC_NO = r"\d(?:[ -]?\d){5,17}"  # 6-18 digits, grouped or not: "1234 5678 9012", "1234-5678"
+_LBL = r"(?:[a-z\d][\w-]*|[A-Z]{2,6}\b|[A-Z][\w-]*(?= ?\. ?(?:[a-z]|[A-Z]{2,6}\b)))"  # email
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d(?:[ -]?\d){{10}}{_E}"), lambda v: _piva_ok(_alnum(v))),
     # anchored: no O(n²). Spaces: Docling joins formatting runs with one (*x* .y@ *domain* .it,
-    # *s* . *y* @ *Domain* .IT); after a spaced dot a label is lowercase or an ALL-CAPS TLD, so
-    # "x@y.it .Grazie" ends at ".it".
+    # *s* . *y* @ *Domain* .IT, x@pec. *domain* .it); after a spaced dot a label is lowercase,
+    # an ALL-CAPS TLD, or capitalized before one more label (pec . *Ditta* .IT), so
+    # "x@y.it .Grazie" ends at ".it"; "x@y.it. Tel. 06..." too (". " needs a dotted label next).
     ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-][\w.+'’-]{0,63}(?: \. ?[\w+'’-]+)* ?@ ?[\w-]+"
-                         r"(?:\.[\w-]+| \. ?(?:[a-z\d][\w-]*|[A-Z]{2,6}\b))+"), None),
+                         rf"(?:\.[\w-]+|(?: \. ?|\. (?=[\w-]+ ?\.)){_LBL})+"), None),
     ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"; the
         # value on the same line or right below it (a form's boxes: a table under the label)
         rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?(?:\n[\s|]*)?"

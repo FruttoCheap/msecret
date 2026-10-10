@@ -315,3 +315,25 @@ def test_social_label_before_a_profile_url():
               "Profilo: facebook.com/profile.php?id=100012345678901"]:
         assert any(s.type == "PERSONA" and s.end == len(t) for s in pii._rules(t)), t
     assert found("Threads: cotone. Discord: problemi/altro. IG: 50") == []
+
+
+# --- round 3, second pass: what the verifier still found ---------------------------------
+
+
+def test_email_capitalized_label_between_spaced_dots(tmp_path):
+    def card(p):
+        d = docx.Document()
+        para = d.add_paragraph("PEC: info77@pec.")
+        para.add_run("rossiservizi").bold = True  # Docling: "info77@pec. rossiservizi .it"
+        para.add_run(".it per le notifiche.")
+        d.save(p)
+
+    html = ("<p>Scrivere a <b>amministrazione</b>@<b>pec</b>.<b>Ditta-Zeta</b>.IT o a "
+            "<b>r.villa</b>@<b>Villa</b>.<b>Group</b>.IT entro lunedì.</p>")
+    text = published(tmp_path, {"mail.html": html, "card.docx": card})
+    assert leaks(text, "amministrazione", "Ditta-Zeta", "r.villa", "Villa", "rossiservizi") == [], text
+    for v in ["amministrazione @ pec . Ditta-Zeta .IT", "r.villa @ Villa . Group .IT",
+              "info77@pec. rossiservizi .it"]:
+        assert found(f"Scrivere a {v} per info.") == [("EMAIL", v)], v
+    assert found("Scrivi a info@ditta.it .Grazie. Poi") == [("EMAIL", "info@ditta.it")]
+    assert ("EMAIL", "info@ditta.it") in found("Scrivi a info@ditta.it. Tel. 0612345678")
