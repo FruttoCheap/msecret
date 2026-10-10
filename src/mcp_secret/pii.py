@@ -146,8 +146,8 @@ _RULES = [
     # problemi" stays), a URL after the label ("Facebook: fb.com/<user>"), a numeric profile id.
     # Not an email's local part ("Instagram: x@y.it"): EMAIL masks that once.
     ("PERSONA", re.compile(
-        r"(?i:\bfacebook\.com/profile\.php\?id=|\b(?:linkedin\.com/in|github\.com|gitlab\.com|t\.me|facebook\.com|fb\.com|fb\.me"
-        r"|instagram\.com|twitter\.com|x\.com|tiktok\.com|reddit\.com/u(?:ser)?|youtube\.com/(?:c|user))"
+        r"(?i:\bfacebook\.com/profile\.php\?id=|\b(?:linkedin\.com/in|github\.com|gitlab\.com|t\.me"
+        r"|facebook\.com|fb\.com|fb\.me|instagram\.com|twitter\.com|x\.com|tiktok\.com|reddit\.com/u(?:ser)?|youtube\.com/(?:c|user))"
         r"/@?|/@|\b(?:skype|telegram|insta(?:gram)?|ig|twitter|tiktok|facebook|fb|youtube|threads"
         r"|snapchat|discord|twitch|mastodon|bluesky)\b"
         r"(?::\s*(?:@|(?=[^\W\d_][\w.-]*(?:\d|[._]\w)))|\s+@))[\w./-]*\w(?![\w.-]*@)"), None),
