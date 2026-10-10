@@ -116,7 +116,8 @@ _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _ACCOUNT = r"(?i:\bc/c\b|\bconto\b|\baccount\b)"
 _ACC_NO = r"\d(?:[ -]?\d){5,17}"  # 6-18 digits, grouped or not: "1234 5678 9012", "1234-5678"
 _PLUS_WORD = r"[ \t]+[^\W\d_][\w'’-]*"  # one more word on the line
-_LBL = r"(?:[a-z\d][\w-]*|[A-Z]{2,6}\b|[A-Z][\w-]*(?= ?\. ?(?:[a-z]|[A-Z]{2,6}\b)))"  # email
+_TLD = r"(?:[a-z]|[A-Z]{2,6}\b|(?:It|Com|Net|Org|Eu|Info|Biz|De|Fr|Es|Ch|Uk|Co)\b)"  # email tail
+_LBL = rf"(?:[a-z\d][\w-]*|{_TLD}|[A-Z][\w-]*(?=(?: ?\. ?[A-Z][\w-]*)* ?\. ?{_TLD}))"
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     # Two groups after a 0 or 3 are a phone ("08995 289769"), which the phone rule masks.
@@ -124,7 +125,8 @@ _RULES = [
      lambda v: _piva_ok(_alnum(v)) and not re.fullmatch(r"[03]\d{1,4}[ -]\d+", v)),
     # anchored: no O(n²). Spaces: Docling joins formatting runs with one (*x* .y@ *domain* .it,
     # *s* . *y* @ *Domain* .IT, x@pec. *domain* .it); after a spaced dot a label is lowercase,
-    # an ALL-CAPS TLD, or capitalized before one more label (pec . *Ditta* .IT), so
+    # an ALL-CAPS or known capitalized TLD (.IT, . It), or capitalized when a chain of labels
+    # ends in one (pec . *Comune* . *Roccaraso* .IT), so
     # "x@y.it .Grazie" ends at ".it"; "x@y.it. Tel. 06..." too (". " needs a dotted label next).
     ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-][\w.+'’-]{0,63}(?: \. ?[\w+'’-]+)* ?@ ?[\w-]+"
                          rf"(?:\.[\w-]+|(?: \. ?|\. (?=[\w-]+ ?\.)){_LBL})+"), None),
@@ -156,20 +158,22 @@ _RULES = [
         r"|reddit\.com/u(?:ser)?|youtube\.com/(?:c|user))"
         r"/(?:profile\.php\?id=)?@?|/@|\b(?:skype|telegram|insta(?:gram)?|ig|twitter|tiktok|facebook|fb|youtube|threads"
         r"|snapchat|discord|twitch|mastodon|bluesky)\b"
-        r"(?::\s*(?:@|(?=[^\W\d_][\w.-]*(?:\d|[._]\w)))|\s+@))[\w./-]*\w(?![\w.-]*@)"), None),
+        r"(?::\s*(?:@|(?=[^\W\d_][\w.-]*(?:\d|[._]\w)))|\s+@))[\w./-]*(?:\?id=\d+)?\w(?![\w.-]*@)"), None),
     ("TELEFONO", re.compile(r"(?i:\bwa\.me/)(?P<v>\+?\d{8,15})\b"), None),  # WhatsApp link as text
     # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345",
     # "Account no.\n12345678". Only number words in between: "conto finale di 1500000" is no account.
     ("IBAN", re.compile(rf"{_ACCOUNT}(?:[\s|:.#°]|(?i:\b(?:n|no|nr|num|numero"
                         rf"|number|corrente|postale|bancario)\b))*(?P<v>{_ACC_NO})\b"), None),
-    # Words in between, the value maybe in the next cell or line: up to five before a number
-    # marker ("conto intestato a Lucia Ferri n. 78978978"), up to two before 7 digits or 8
-    # grouped ("c/c BancoPosta 001234567890"), not a pair of years ("conto economico 2023 2024").
+    # Words in between, the value maybe in the next cell or line: anything (no blank line) before a
+    # number marker ("intestato a Rossi Mario, n. …", "(n. …)", "| Banca | n. …"), up to two words
+    # before 7 digits or 8 grouped ("c/c BancoPosta 001234567890"), not a pair of years or a
+    # date ("conto economico 2023 2024", "al 31 12 2023").
     # ponytail: "il conto è di 1500000" is masked too (noise).
-    ("IBAN", re.compile(rf"{_ACCOUNT}(?:(?:{_PLUS_WORD}){{1,5}}?[\s|]*(?i:\b(?:n|no|nr|num|numero"
-                        r"|number|id)\b\.?|[:#°])[\s|:.#°]*"
+    ("IBAN", re.compile(rf"{_ACCOUNT}(?:(?:[^\n]|\n(?![ \t]*\n)){{0,80}}?(?i:\b(?:n\.ro|n|no|nr|num"
+                        r"|numero|number|id)\b\.?|[:#°])[\s|:.#°]*"
                         rf"|(?:{_PLUS_WORD}){{1,2}}?[\s|]+(?=\d{{7}}|\d(?:[ -]?\d){{7}})"
-                        r"(?!(?:19|20)\d\d[ -](?:19|20)\d\d(?![ -]?\d)))"
+                        r"(?!(?:19|20)\d\d[ -](?:19|20)\d\d(?![ -]?\d))"
+                        r"(?!\d\d?[ -]\d\d?[ -](?:19|20)\d\d\b))"
                         rf"(?P<v>{_ACC_NO})\b"), None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),

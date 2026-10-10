@@ -369,3 +369,28 @@ def test_profile_id_on_the_short_facebook_host():
 def test_spaced_landline_passing_luhn_is_a_phone():
     for v in ["08995 289769", "06585 656934", "07020 429796"]:
         assert found(f"Tel. {v} ore ufficio") == [("TELEFONO", v)], v
+
+
+def test_account_marker_after_punctuation_and_dates_are_no_account():
+    for t in ["conto intestato a Bianchetti Mario, n. 55667781",
+              "conto corrente intestato al Sig. Rossetti n. 66778899",
+              "Conto corrente (n. 77889900)", "| Conto | Banca Popolare | n. 5544332 |",
+              "conto corrente n.ro 44556677"]:
+        assert ("IBAN", re.findall(r"\d+", t)[-1]) in found(t), t
+    assert found("Nel conto economico al 31 12 2023 nulla.") == []
+
+
+def test_profile_id_after_a_social_label():
+    for t in ["Facebook: fb.com/profile.php?id=100011122233344",
+              "FB: facebook.com/profile.php?id=100022233344455",
+              "facebook: www.facebook.com/profile.php?id=100033344455566"]:
+        assert any(t.endswith(v) for _, v in found(t)), (t, found(t))
+
+
+def test_email_with_capitalized_labels_in_a_row():
+    for t, v in [("protocollo @ pec . Comune . Roccaraso .IT", "protocollo @ pec . Comune . Roccaraso .IT"),
+                 ("ced.amm @ Omega . Servizi . Italia .IT", "ced.amm @ Omega . Servizi . Italia .IT"),
+                 ("r.villa @ Villa . Group . It", "r.villa @ Villa . Group . It")]:
+        assert ("EMAIL", v) in found(f"Scrivere a {t} entro lunedì"), (t, found(t))
+    assert found("Scrivi a info@ditta.it .Grazie. Poi") == [("EMAIL", "info@ditta.it")]
+    assert ("EMAIL", "info@ditta.it") in found("Mail info@ditta.it. Tel. 06 1234567")
