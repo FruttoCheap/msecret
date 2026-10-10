@@ -188,3 +188,8 @@ def test_case_folds_the_regex_knows_but_lower_does_not(tmp_path):
     text = published(tmp_path, {"a.txt": "Studio legale: www.yılmaz-hukuk.com.tr\n"}, deny="Yilmaz\n")
     assert [t for t in re.findall(r"\[[^\]]*\]", text) if not TOKEN.fullmatch(t)] == [], text
     assert leaks(text, "yılmaz") == [], text
+
+
+def test_every_unicode_dash_is_folded(tmp_path):
+    text = published(tmp_path, {"n.txt": "Tel. 333⸺765֊4321, CF RSS⸺MRA〜80A01H501U\n"})
+    assert leaks(text, "3337654321", CF) == [], text

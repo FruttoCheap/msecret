@@ -244,12 +244,9 @@ def _tables(text: str):
                 a += len(cell) + 1
 
 
-_DASHES = "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"
-
-
 def _fold(m: re.Match) -> str:
-    c = m[0]
-    return "-" if c in _DASHES else " " if unicodedata.category(c) in ("Zs", "Mn", "Me") else c
+    c, cat = m[0], unicodedata.category(m[0])
+    return "-" if cat == "Pd" or c == "\u2212" else " " if cat in ("Zs", "Mn", "Me") else c
 
 
 def _shadow(text: str) -> str:
