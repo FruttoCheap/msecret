@@ -364,3 +364,8 @@ def test_more_dash_lookalikes_and_undeclared_html_charset(tmp_path):
 def test_profile_id_on_the_short_facebook_host():
     t = "Profilo: fb.com/profile.php?id=100045678901234"
     assert any(s.type == "PERSONA" and s.end == len(t) for s in pii._rules(t)), found(t)
+
+
+def test_spaced_landline_passing_luhn_is_a_phone():
+    for v in ["08995 289769", "06585 656934", "07020 429796"]:
+        assert found(f"Tel. {v} ore ufficio") == [("TELEFONO", v)], v

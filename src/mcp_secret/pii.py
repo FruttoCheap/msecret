@@ -119,7 +119,9 @@ _PLUS_WORD = r"[ \t]+[^\W\d_][\w'’-]*"  # one more word on the line
 _LBL = r"(?:[a-z\d][\w-]*|[A-Z]{2,6}\b|[A-Z][\w-]*(?= ?\. ?(?:[a-z]|[A-Z]{2,6}\b)))"  # email
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
-    ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d(?:[ -]?\d){{10}}{_E}"), lambda v: _piva_ok(_alnum(v))),
+    # Two groups after a 0 or 3 are a phone ("08995 289769"), which the phone rule masks.
+    ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d(?:[ -]?\d){{10}}{_E}"),
+     lambda v: _piva_ok(_alnum(v)) and not re.fullmatch(r"[03]\d{1,4}[ -]\d+", v)),
     # anchored: no O(n²). Spaces: Docling joins formatting runs with one (*x* .y@ *domain* .it,
     # *s* . *y* @ *Domain* .IT, x@pec. *domain* .it); after a spaced dot a label is lowercase,
     # an ALL-CAPS TLD, or capitalized before one more label (pec . *Ditta* .IT), so
