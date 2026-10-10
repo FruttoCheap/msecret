@@ -267,13 +267,14 @@ def _tables(text: str):
 
 
 # Dashes Unicode files elsewhere: minus signs, hyphen bullet, swung dash, prolonged sound mark,
-# box-drawing horizontals.
-_DASHES = "\u2212\u2796\u02d7\u2043\u2053\u23af\u30fc\u2500\u2501\u2504\u2505\u2508\u2509\u254c\u254d"
+# the whole box-drawing block, scan lines, macrons and overlines (NFKC leaves " " + U+0304/5).
+_DASHES = re.compile("[\u2212\u2796\u02d7\u2043\u2052\u2053\u23af\u23ba-\u23bd\u30fc"
+                     "\u2500-\u257f\u00af\u02c9\u02cd\u203e\uffe3\u0304\u0305]")
 
 
 def _fold(m: re.Match) -> str:
     c, cat = m[0], unicodedata.category(m[0])
-    return "-" if cat == "Pd" or c in _DASHES else " " if cat in ("Zs", "Mn", "Me") else c
+    return "-" if cat == "Pd" or _DASHES.match(c) else " " if cat in ("Zs", "Mn", "Me") else c
 
 
 def _shadow(text: str) -> str:

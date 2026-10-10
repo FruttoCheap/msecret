@@ -15,7 +15,7 @@ from test_attacks import CF, IBAN, leaks, published
 from test_leak import CLI
 from test_pii import generate
 
-from mcp_secret import pii, server
+from mcp_secret import ingest, pii, server
 from mcp_secret.cli import profile, sandbox_cmd
 
 TOKEN = re.compile(r"\[[A-Z]+(?:_[A-Z]+)*_\d+\]")
@@ -350,3 +350,12 @@ def test_account_number_across_cells_lines_and_more_words():
 def test_phone_with_international_prefix_after_a_comma():
     for v in ["+393478889990", "00393471230003"]:
         assert found(f"Rossi 45,{v}") == [("TELEFONO", v)], v
+
+
+def test_more_dash_lookalikes_and_undeclared_html_charset(tmp_path):
+    for c in "═╴╶╸⎼⎽¯‾￣":
+        t = ingest.clean(f"Tel. 333{c}765{c}4321")  # ¯ ‾ ￣: NFKC leaves a space and a mark
+        assert [k for k, _ in found(t)] == ["TELEFONO"], hex(ord(c))
+    html = "<p>Cellulare 333─9876543</p>".encode()  # UTF-8, no charset: bs4 guesses
+    text = published(tmp_path, {"c.html": lambda p: p.write_bytes(html)})
+    assert leaks(text, "3339876543") == [] and "Ō" not in text, text

@@ -1,5 +1,6 @@
 """Ingest: file -> NFC text -> pseudonymized chunks in public.db, entities in private.db."""
 
+import codecs
 import email
 import email.policy
 import functools
@@ -74,11 +75,27 @@ def _xlsx(path: Path):
     return DocumentStream(name="book.xlsx", stream=io.BytesIO(buf.getvalue()))
 
 
+def _html(data: bytes):
+    """bs4 guesses an undeclared charset (a UTF-8 "─" read as cp775 turns the phone around it
+    into "333ŌöĆ9876543"), and an e-mail body's <meta> names its old charset: bytes that are
+    UTF-8 get a BOM, which bs4 trusts first."""
+    from docling.datamodel.base_models import DocumentStream
+
+    try:
+        data.decode()
+        data = codecs.BOM_UTF8 + data
+    except UnicodeDecodeError:
+        pass
+    return DocumentStream(name="page.html", stream=io.BytesIO(data))
+
+
 def parse(path: Path) -> str:
     """Document text. Only the content: no file name, no metadata (title, author, dates)."""
     kind = path.suffix.lower()
     if kind == ".txt":
         return path.read_text(errors="replace")
+    if kind in (".html", ".htm"):
+        return _markdown(_html(path.read_bytes()))
     if kind != ".eml":
         return _markdown(_xlsx(path) if kind == ".xlsx" else path)
     # ponytail: attachments are skipped, save and ingest them as files
@@ -87,9 +104,7 @@ def parse(path: Path) -> str:
     part = msg.get_body(("plain", "html"))
     body = part.get_content() if part else ""
     if part and part.get_content_type() == "text/html":
-        from docling.datamodel.base_models import DocumentStream
-
-        body = _markdown(DocumentStream(name="body.html", stream=io.BytesIO(body.encode())))
+        body = _markdown(_html(body.encode()))
     return f"{head}\n\n{body}"
 
 
