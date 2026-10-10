@@ -10,8 +10,9 @@ the body, so whatever detection misses there is published like a miss in the bod
   the pseudonymized chunks to `public/public.db`.
 - `serve` (MCP over stdio) opens only `public/public.db`, read-only, inside `sandbox-exec`: no
   network, no programs but Python itself, no system services (mach-lookup), no reads of your
-  home folder, `/Users`, `/Volumes` or the temp folders except `public/` and the Python runtime.
-  It refuses to start if the sandbox is not active.
+  home folder, `/Users`, `/Volumes` or the temp folders except `public/` and the Python runtime,
+  no file writes anywhere, no peeking at or signalling other processes. It refuses to start if
+  the sandbox is not active.
 
 ## Install
 
@@ -56,6 +57,15 @@ new documents and scrubbed from those already indexed.
 - The metrics in [fixtures/README.md](fixtures/README.md) come from Faker templates and
   overestimate real recall. Before trusting it with sensitive files, annotate about ten of your
   own documents by hand and measure on them, locally; never commit them.
+- Known detector gaps, left to that hand check: name parts written in lowercase, OCR-garbled
+  values, surname-only CSV columns without a name header, UK National Insurance and Turkish
+  TC Kimlik numbers, foreign street lines, label phrases the model tags as places, an 8-digit
+  staff number in a birth table, `/@word` URL paths, a phone glued to CSV numbers like
+  `Vite,0,0312345678`.
+- The sandbox cannot hide `sysctl KERN_PROCARGS2` (no sandbox rule gates it): a compromised
+  `serve` could read the command lines of your other processes, and the environment of those
+  without hardened runtime, and return them to the agent. Keep secrets out of the environment
+  of the app that launches it.
 
 ## Claude Desktop
 
