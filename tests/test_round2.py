@@ -337,3 +337,11 @@ def test_email_capitalized_label_between_spaced_dots(tmp_path):
         assert found(f"Scrivere a {v} per info.") == [("EMAIL", v)], v
     assert found("Scrivi a info@ditta.it .Grazie. Poi") == [("EMAIL", "info@ditta.it")]
     assert ("EMAIL", "info@ditta.it") in found("Scrivi a info@ditta.it. Tel. 0612345678")
+
+
+def test_account_number_across_cells_lines_and_more_words():
+    for t in ["| Conto deposito | 45645645 |", "Conto deposito\nn. 12312312",
+              "conto intestato a Lucia Ferri n. 78978978", "conto titoli 6677889"]:
+        assert ("IBAN", re.findall(r"\d+", t)[-1]) in found(t), t
+    for t in ["Nel conto economico 2023 2024 i ricavi", "Il conto finale è di 1500000 euro."]:
+        assert found(t) == [], t

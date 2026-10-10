@@ -115,6 +115,7 @@ _TITLE = (
 _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _ACCOUNT = r"(?i:\bc/c\b|\bconto\b|\baccount\b)"
 _ACC_NO = r"\d(?:[ -]?\d){5,17}"  # 6-18 digits, grouped or not: "1234 5678 9012", "1234-5678"
+_PLUS_WORD = r"[ \t]+[^\W\d_][\w'’-]*"  # one more word on the line
 _LBL = r"(?:[a-z\d][\w-]*|[A-Z]{2,6}\b|[A-Z][\w-]*(?= ?\. ?(?:[a-z]|[A-Z]{2,6}\b)))"  # email
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
@@ -159,11 +160,15 @@ _RULES = [
     # "Account no.\n12345678". Only number words in between: "conto finale di 1500000" is no account.
     ("IBAN", re.compile(rf"{_ACCOUNT}(?:[\s|:.#°]|(?i:\b(?:n|no|nr|num|numero"
                         rf"|number|corrente|postale|bancario)\b))*(?P<v>{_ACC_NO})\b"), None),
-    # A word or two in between ("conto deposito n. 12345678", "c/c BancoPosta 001234567890"),
-    # then a number marker or 8+ digits. ponytail: "il conto è di 15000000" is masked too (noise).
-    ("IBAN", re.compile(rf"{_ACCOUNT}(?:[ \t]+[^\W\d_][\w'’-]*){{1,2}}?(?:[ \t]*(?i:\b(?:n|no|nr"
-                        r"|num|numero|number|id)\b\.?|[:#°])[\s|:.#°]*"
-                        rf"|[ \t]+(?=\d(?:[ -]?\d){{7}}))(?P<v>{_ACC_NO})\b"), None),
+    # Words in between, the value maybe in the next cell or line: up to five before a number
+    # marker ("conto intestato a Lucia Ferri n. 78978978"), up to two before 7 digits or 8
+    # grouped ("c/c BancoPosta 001234567890"), not a pair of years ("conto economico 2023 2024").
+    # ponytail: "il conto è di 1500000" is masked too (noise).
+    ("IBAN", re.compile(rf"{_ACCOUNT}(?:(?:{_PLUS_WORD}){{1,5}}?[\s|]*(?i:\b(?:n|no|nr|num|numero"
+                        r"|number|id)\b\.?|[:#°])[\s|:.#°]*"
+                        rf"|(?:{_PLUS_WORD}){{1,2}}?[\s|]+(?=\d{{7}}|\d(?:[ -]?\d){{7}})"
+                        r"(?!(?:19|20)\d\d[ -](?:19|20)\d\d(?![ -]?\d)))"
+                        rf"(?P<v>{_ACC_NO})\b"), None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
     ("TARGA", re.compile(  # car plates; after "targa": motorcycle AB 12345, old ROMA A12345
