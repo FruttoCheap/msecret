@@ -301,3 +301,9 @@ def test_partita_iva_with_separators():
     for v in ["1234567-8903", "123 456 789 03", "12345 678 903", "IT 0712-3456-787", "023 4567 8912"]:
         assert ("PIVA", v) in found(f"P.IVA {v} del fornitore"), v
     assert found("P.IVA 123 456 789 04 del fornitore") == []  # checksum fails
+
+
+def test_grouped_account_number_after_its_label():
+    for v in ["Conto n. 1234 5678 9012", "Account number: 1234-5678", "conto deposito 0012 3456 7890"]:
+        assert ("IBAN", re.search(r"\d.*", v)[0]) in found(v), v
+    assert found("Il conto finale è di 1 500 000 euro.") == []

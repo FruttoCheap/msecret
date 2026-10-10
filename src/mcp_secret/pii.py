@@ -114,6 +114,7 @@ _TITLE = (
 )
 _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _ACCOUNT = r"(?i:\bc/c\b|\bconto\b|\baccount\b)"
+_ACC_NO = r"\d(?:[ -]?\d){5,17}"  # 6-18 digits, grouped or not: "1234 5678 9012", "1234-5678"
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d(?:[ -]?\d){{10}}{_E}"), lambda v: _piva_ok(_alnum(v))),
@@ -153,11 +154,12 @@ _RULES = [
     # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345",
     # "Account no.\n12345678". Only number words in between: "conto finale di 1500000" is no account.
     ("IBAN", re.compile(rf"{_ACCOUNT}(?:[\s|:.#°]|(?i:\b(?:n|no|nr|num|numero"
-                        r"|number|corrente|postale|bancario)\b))*(?P<v>\d{6,18})\b"), None),
+                        rf"|number|corrente|postale|bancario)\b))*(?P<v>{_ACC_NO})\b"), None),
     # A word or two in between ("conto deposito n. 12345678", "c/c BancoPosta 001234567890"),
     # then a number marker or 8+ digits. ponytail: "il conto è di 15000000" is masked too (noise).
     ("IBAN", re.compile(rf"{_ACCOUNT}(?:[ \t]+[^\W\d_][\w'’-]*){{1,2}}?(?:[ \t]*(?i:\b(?:n|no|nr"
-                        r"|num|numero|number|id)\b\.?|[:#°])[\s|:.#°]*|[ \t]+(?=\d{8}))(?P<v>\d{6,18})\b"),
+                        rf"|num|numero|number|id)\b\.?|[:#°])[\s|:.#°]*|[ \t]+(?=\d(?:[ -]?\d){{7}}))"
+                        rf"(?P<v>{_ACC_NO})\b"),
      None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
