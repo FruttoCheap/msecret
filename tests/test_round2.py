@@ -121,3 +121,18 @@ def test_lone_name_parts_stay_in_their_document(tmp_path):
     b = "Il pacchetto costa poco e la spedizione costa meno del previsto.\n"
     text = published(tmp_path, {"a.txt": a, "b.txt": b})
     assert "Costa riceverà" not in text and "costa poco" in text and "costa meno" in text, text
+
+
+# --- round 2, second pass: what the verifier still found -----------------------------------
+
+
+def found(text: str) -> list[tuple[str, str]]:
+    """What the rules alone mask: precision checks without the model's noise."""
+    return [(s.type, text[s.start : s.end]) for s in pii._rules(text)]
+
+
+def test_email_split_inside_the_local_part(tmp_path):
+    html = "<p>Scrivere a <b>ufficio77</b>.acquisti@<i>dittabeta</i>.com per informazioni.</p>"
+    text = published(tmp_path, {"mail.html": html})  # "ufficio77 .acquisti@ dittabeta .com"
+    assert leaks(text, "ufficio77", "acquisti") == [] and "[EMAIL_1]" in text, text
+    assert found("Scrivi a info@ditta.it .Grazie") == [("EMAIL", "info@ditta.it")]
