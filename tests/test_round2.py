@@ -219,3 +219,10 @@ Versamento su c/c BancoPosta 001234567890.
     text = published(tmp_path, {"n.txt": note})
     assert leaks(text, "12345678", "87654321", "000045678912", "123456789", "001234567890") == [], text
     assert found("Il conto finale è di 1500000 euro.") == []
+
+
+def test_phone_after_a_word_and_a_number_with_a_comma(tmp_path):
+    rows = "Rossi 45,3471234567\nVia Roma 12,3471234567\nBianchi 7,0612345678\n"
+    text = published(tmp_path, {"rubrica.txt": rows})
+    assert leaks(text, "3471234567", "0612345678") == [], text
+    assert found("Rossi 45,3471234567") == [("TELEFONO", "3471234567")]
