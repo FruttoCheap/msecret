@@ -207,3 +207,15 @@ def test_email_split_before_a_capitalized_domain(tmp_path):
               "x @ ditta . it", "a .b @ c . IT"]:
         assert found(f"Scrivere a {v} per info.") == [("EMAIL", v)], v
     assert found("Scrivi a info@ditta.it .Grazie") == [("EMAIL", "info@ditta.it")]
+
+
+def test_account_number_after_a_word_between_label_and_value(tmp_path):
+    note = """Saldo sul conto deposito n. 12345678 al 31/12.
+Account ID: 87654321
+Titoli in custodia sul conto titoli 000045678912.
+Bonifico dal conto cointestato n. 123456789 di entrambi.
+Versamento su c/c BancoPosta 001234567890.
+"""
+    text = published(tmp_path, {"n.txt": note})
+    assert leaks(text, "12345678", "87654321", "000045678912", "123456789", "001234567890") == [], text
+    assert found("Il conto finale è di 1500000 euro.") == []

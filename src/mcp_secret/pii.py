@@ -113,6 +113,7 @@ _TITLE = (
     rf"|Mr\.|Mrs\.|Ms\.|Dr\.|Gent(?:\.mo|\.ma|ile)|Egregi[oa]|Car[oa]|Ciao|Dear|Hi|Hello|(?:{_LABEL}):)"
 )
 _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
+_ACCOUNT = r"(?i:\bc/c\b|\bconto\b|\baccount\b)"
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d{{11}}{_E}"), _piva_ok),
@@ -151,8 +152,13 @@ _RULES = [
     ("TELEFONO", re.compile(r"(?i:\bwa\.me/)(?P<v>\+?\d{8,15})\b"), None),  # WhatsApp link as text
     # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345",
     # "Account no.\n12345678". Only number words in between: "conto finale di 1500000" is no account.
-    ("IBAN", re.compile(r"(?i:\bc/c\b|\bconto\b|\baccount\b)(?:[\s|:.#°]|(?i:\b(?:n|no|nr|num|numero"
+    ("IBAN", re.compile(rf"{_ACCOUNT}(?:[\s|:.#°]|(?i:\b(?:n|no|nr|num|numero"
                         r"|number|corrente|postale|bancario)\b))*(?P<v>\d{6,18})\b"), None),
+    # A word or two in between ("conto deposito n. 12345678", "c/c BancoPosta 001234567890"),
+    # then a number marker or 8+ digits. ponytail: "il conto è di 15000000" is masked too (noise).
+    ("IBAN", re.compile(rf"{_ACCOUNT}(?:[ \t]+[^\W\d_][\w'’-]*){{1,2}}?(?:[ \t]*(?i:\b(?:n|no|nr"
+                        r"|num|numero|number|id)\b\.?|[:#°])[\s|:.#°]*|[ \t]+(?=\d{8}))(?P<v>\d{6,18})\b"),
+     None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
     ("TARGA", re.compile(  # car plates; after "targa": motorcycle AB 12345, old ROMA A12345
