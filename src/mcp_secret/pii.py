@@ -139,12 +139,14 @@ _RULES = [
     ("PERSONA", re.compile(rf"(?m)^[ \t]*(?:Cheers|Thanks|Thank you|Best|Love|Un abbraccio|Baci"
                            rf"|A presto)[,!.]*[ \t]*\n[ \t]*[{_UP}][a-zà-ÿ'’-]{{2,}}[ \t]*$"), None),
     # Profile URLs and handles carry the name: linkedin.com/in/<slug>, any host's /@<user>,
-    # "IG: @<user>". Not an email's local part ("Instagram: x@y.it"): EMAIL masks that once.
+    # "IG: @<user>", "Skype: <user.name>" (no "@": a digit, "." or "_" inside, so "Discord:
+    # problemi" stays). Not an email's local part ("Instagram: x@y.it"): EMAIL masks that once.
     ("PERSONA", re.compile(
-        r"(?i:\b(?:linkedin\.com/in|github\.com|gitlab\.com|t\.me|facebook\.com|instagram\.com"
-        r"|twitter\.com|x\.com|tiktok\.com)/@?|/@|\b(?:skype|telegram|instagram|ig|twitter|tiktok"
-        r"|facebook|fb|youtube|threads|snapchat|discord|twitch|mastodon|bluesky)\b"
-        r"(?::\s*@?|\s+@))[\w.-]*\w(?![\w.-]*@)"), None),
+        r"(?i:\b(?:linkedin\.com/in|github\.com|gitlab\.com|t\.me|facebook\.com|fb\.com|fb\.me"
+        r"|instagram\.com|twitter\.com|x\.com|tiktok\.com|reddit\.com/u(?:ser)?|youtube\.com/(?:c|user))"
+        r"/@?|/@|\b(?:skype|telegram|insta(?:gram)?|ig|twitter|tiktok|facebook|fb|youtube|threads"
+        r"|snapchat|discord|twitch|mastodon|bluesky)\b"
+        r"(?::\s*(?:@|(?=[^\W\d_][\w.-]*(?:\d|[._]\w)))|\s+@))[\w.-]*\w(?![\w.-]*@)"), None),
     ("TELEFONO", re.compile(r"(?i:\bwa\.me/)(?P<v>\+?\d{8,15})\b"), None),  # WhatsApp link as text
     # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345",
     # "Account no.\n12345678". Only number words in between: "conto finale di 1500000" is no account.

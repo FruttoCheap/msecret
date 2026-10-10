@@ -176,3 +176,9 @@ def test_account_number_on_the_line_below_its_label(tmp_path):
     text = published(tmp_path, {"n.txt": "Account no.\n12345678\n\nAccount number\n\n31926819\n"})
     assert leaks(text, "12345678", "31926819") == [], text
     assert found("Il conto finale è di 1500000 euro.") == []
+
+
+def test_more_profile_hosts_and_handle_labels(tmp_path):
+    text = published(tmp_path, {"n.txt": "Profili: fb.com/marco.rossi.75 e insta: @sara.bianchi.92\n"})
+    assert leaks(text, "marco.rossi.75", "sara.bianchi.92") == [], text
+    assert found("Threads: cotone. Discord: problemi. IG: 50") == []
