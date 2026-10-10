@@ -147,3 +147,17 @@ Reference: born on the first of May, 1980. Her brother, born on the twenty-secon
     text = published(tmp_path, {"note.txt": note})
     assert leaks(text, "12 MARZO DEL 1958", "9 Luglio Del 1977", "3 APRILE 1962",
                  "first of May, 1980", "twenty-second of June, 1983") == [], text
+
+
+def test_boxed_birth_date_under_a_table_header(tmp_path):
+    def form(p):
+        d = docx.Document()
+        t = d.add_table(rows=2, cols=8)
+        t.rows[0].cells[0].merge(t.rows[0].cells[7]).text = "DATA DI NASCITA"
+        for c, v in zip(t.rows[1].cells, "30111985"):
+            c.text = v
+        d.save(p)
+
+    md = "| Data di nascita |\n|---|\n| 1 | 4 | 0 | 2 | 1 | 9 | 7 | 0 |\n"
+    text = published(tmp_path, {"modulo.docx": form, "modulo.txt": md})
+    assert leaks(text, "30111985", "14021970") == [], text

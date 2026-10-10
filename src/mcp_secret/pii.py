@@ -219,12 +219,13 @@ def _ibans(text: str):
 
 
 def _tables(text: str):
-    # ponytail: every date of a markdown table whose header mentions birth; per column if noisy.
+    # ponytail: every date of a markdown table whose header mentions birth (a form's boxes in
+    # the row below "| DATA DI NASCITA |" too); per column if noisy.
     for t in _TABLE.finditer(text):
         head = t.group().split("\n", 1)
         off = t.start() + len(head[0]) + 1
         if re.search(r"(?i)nascit|birth|\bnat[oa]\b|\bd\.?o\.?b\b", head[0]):
-            for m in re.finditer(_DATE, head[1]):
+            for m in re.finditer(rf"\b(?:{_BIRTH})", head[1]):
                 yield Span(off + m.start(), off + m.end(), "DATA_NASCITA")
         # Every cell under a name header ("| Dipendente |" over "| PACE TELEMACO |").
         # ponytail: "| Nome |" over products masks products too; a stricter header list if noisy
