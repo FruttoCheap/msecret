@@ -26,9 +26,9 @@ def _any(kind: str, paths) -> str:
 
 
 def profile(root: Path | None = None) -> str:
-    """sandbox-exec profile: no network. With `root` (serve): no reads or writes of $HOME, the
-    data root, other users, volumes and temp dirs except reads of public/ and the Python
-    runtime; no exec but Python itself; no mach services."""
+    """sandbox-exec profile: no network. With `root` (serve): no reads of $HOME, the data root,
+    other users, volumes and temp dirs except public/ and the Python runtime; no file writes
+    anywhere (inherited stdio fds still work); no exec but Python itself; no mach services."""
     sbpl = "(version 1)(allow default)(deny network*)"
     if root is None:
         return sbpl
@@ -40,7 +40,9 @@ def profile(root: Path | None = None) -> str:
     # ponytail: where documents usually live; (deny default) if one turns up elsewhere (/opt)
     docs = [me, root, "/Users", "/Volumes", "/private/tmp", "/private/var/folders"]
     return sbpl + "".join([
-        f"(deny file-read* file-write* {_any('subpath', docs)})",
+        f"(deny file-read* {_any('subpath', docs)})",
+        # a write outside the box (a binary, a shell rc) runs later unsandboxed
+        '(deny file-write*)(allow file-write-data (literal "/dev/null") (literal "/dev/dtracehelper"))',
         # SQLite lstat()s every path component when opening public.db
         f"(allow file-read-metadata {_any('literal', pub.parents)})",
         f"(allow file-read* {_any('subpath', [pub, *sorted(runtime)])})",
@@ -52,7 +54,7 @@ def profile(root: Path | None = None) -> str:
 
 
 def sandbox_cmd(prof: str, *args: str) -> list[str]:
-    return [SANDBOX, "-p", prof, sys.executable, "-I", *args]
+    return [SANDBOX, "-p", prof, sys.executable, "-I", "-B", *args]  # -B: no .pyc writes
 
 
 def _denied(op) -> bool:

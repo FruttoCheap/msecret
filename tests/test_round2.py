@@ -1,10 +1,18 @@
 """Round-2 regressions: the token contract, the serve sandbox scope, rule gaps, lone names."""
 
+import ctypes
+import json
+import os
 import re
 import sqlite3
+import subprocess
+import sys
+import threading
 
 import docx
+from mcp.types import LATEST_PROTOCOL_VERSION
 from test_attacks import CF, IBAN, leaks, published
+from test_leak import CLI
 from test_pii import generate
 
 from mcp_secret import pii, server
@@ -226,3 +234,38 @@ def test_phone_after_a_word_and_a_number_with_a_comma(tmp_path):
     text = published(tmp_path, {"rubrica.txt": rows})
     assert leaks(text, "3471234567", "0612345678") == [], text
     assert found("Rossi 45,3471234567") == [("TELEFONO", "3471234567")]
+
+
+def sandbox_denies(pid: int, op: str, path: str) -> bool:
+    """The kernel's verdict for `op` on `path` in process `pid`'s sandbox; tries nothing."""
+    check = ctypes.CDLL(None).sandbox_check
+    check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]  # the path is variadic
+    return check(pid, op.encode(), 0x40000001, path.encode()) == 1  # FILTER_PATH | NO_REPORT
+
+
+def test_serve_writes_no_file(tmp_path):
+    published(tmp_path, {"a.txt": "Nota di prova per la sessione.\n"})
+    env = {**os.environ, "MCP_SECRET_HOME": str(tmp_path / "data")}
+    p = subprocess.Popen([CLI, "serve"], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True)
+    threading.Timer(60, p.kill).start()  # a hung session fails the test, never blocks it
+
+    def rpc(method: str, **params) -> dict:
+        p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+                      + "\n")
+        p.stdin.flush()
+        return json.loads(p.stdout.readline())
+
+    try:
+        assert "result" in rpc("initialize", protocolVersion=LATEST_PROTOCOL_VERSION,
+                               capabilities={}, clientInfo={"name": "t", "version": "0"})
+        r = rpc("tools/call", name="list_sources", arguments={})
+        assert r["result"]["structuredContent"]["result"], r  # the stdio session works
+        # existing files outside every denied path: a write there runs later, unsandboxed
+        files = [os.path.realpath(sys.executable), "/opt/homebrew/bin/brew", "/usr/bin/true"]
+        assert [f for f in files if os.path.exists(f)
+                and not sandbox_denies(p.pid, "file-write-data", f)] == []
+    finally:
+        p.kill()
+        p.wait()
+
