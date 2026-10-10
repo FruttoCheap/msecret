@@ -145,7 +145,7 @@ _RULES = [
         r"|twitter\.com|x\.com|tiktok\.com)/@?|/@|\b(?:skype|telegram|instagram|ig|twitter|tiktok"
         r"|facebook|fb|youtube|threads|snapchat|discord|twitch|mastodon|bluesky)\b"
         r"(?::\s*@?|\s+@))[\w.-]*\w(?![\w.-]*@)"), None),
-    ("TELEFONO", re.compile(r"(?i:\bwa\.me/)(?P<v>\d{8,15})\b"), None),  # WhatsApp link as text
+    ("TELEFONO", re.compile(r"(?i:\bwa\.me/)(?P<v>\+?\d{8,15})\b"), None),  # WhatsApp link as text
     # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345".
     ("IBAN", re.compile(r"(?i:\bc/c\b|\bconto(?: corrente)?\b|\baccount\b)[^\n\d]{0,15}?"
                         r"(?P<v>\d{6,18})\b"), None),
@@ -163,12 +163,15 @@ _RULES = [
 ]
 # Lookahead: candidates may overlap (two IBANs in one table row), _ibans keeps the first.
 _IBAN = re.compile(rf"(?i){_B}(?=([A-Z]{_SEP}[A-Z]{_SEP}\d{_SEP}\d(?:{_SEP}[A-Z0-9]){{11,30}}))")
-# Not after a letter or digit, "/" or "-" (codes, dates), nor after "1." (amounts, versions);
-# after "_" (contatto_<phone>.vcf) and a comma (CSV rows, "Rosa,34,<phone>") is fine. Groups:
-# one of ./- with optional spaces around it ("051 / 22 33 44").
-_PHONE = re.compile(r"(?<![^\W_])(?<![+(/-])(?<!\d\.)\(?\+?\d+\)?(?:(?: ?[./-] ?| )?\(?\d+\)?)*")
+# Not after a letter or digit, "/" or a "-" not glued to a word (codes, dates), nor after "1."
+# (amounts, versions); after "_" or "x-" (contatto_<phone>.vcf, scheda-<phone>.vcf) and a comma
+# (CSV rows, "Rosa,34,<phone>") is fine. Groups: one of ./- with optional spaces ("051 / 22 33").
+_PHONE = re.compile(r"(?<![^\W_])(?<![+(/])(?:(?<=[^\W\d_]-)|(?<!-))(?<!\d\.)"
+                    r"\(?\+?\d+\)?(?:(?: ?[./-] ?| )?\(?\d+\)?)*")
 _PHONE_TOK = re.compile(r"\(?\+?\d+\)?")
 _PHONE_CTX = re.compile(r"(?i)\b(?:tel|cell|phone|fax|mob|recapit|numero|whatsapp)\w*\W{0,12}$")
+# "12,<digits>", "1.234,<digits>": an amount; ",34,<digits>", ",1.75,<digits>": a CSV column
+_DECIMAL = re.compile(r"[^\d.,\n][\d.]*\d,$")
 _TABLE = re.compile(r"(?m)^\|.*\n(?:\|.*(?:\n|$))+")
 _ROW = re.compile(r"(?m)^\|.*")
 _NAME_COL = re.compile(rf"\s*(?i:{_LABEL})\s*")
@@ -177,7 +180,7 @@ _PART = re.compile(rf"[{_UP}][^\W\d_]*(?:['’-][^\W\d_]+)*")  # one word of a n
 
 def _phone_ok(s: str, before: str) -> bool:
     d = sum(c.isdigit() for c in s)
-    if re.fullmatch(r"\d{1,2}([./-])\d{1,2}\1\d{2,4}", s):
+    if _DECIMAL.search(before) or re.fullmatch(r"\d{1,2}([./-])\d{1,2}\1\d{2,4}", s):
         return False
     if s[0] in "+(" or s.startswith("00"):
         return 8 <= d <= 15

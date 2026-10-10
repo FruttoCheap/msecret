@@ -161,3 +161,12 @@ def test_boxed_birth_date_under_a_table_header(tmp_path):
     md = "| Data di nascita |\n|---|\n| 1 | 4 | 0 | 2 | 1 | 9 | 7 | 0 |\n"
     text = published(tmp_path, {"modulo.docx": form, "modulo.txt": md})
     assert leaks(text, "30111985", "14021970") == [], text
+
+
+def test_whatsapp_link_with_plus_and_phone_after_a_dash(tmp_path):
+    text = published(tmp_path, {"n.txt": "Chat: wa.me/+393287776655, poi scheda-3289990011.vcf\n"})
+    assert leaks(text, "3287776655", "3289990011") == [], text
+    # a decimal comma is no CSV column: "12,0345..." and "1.234,333..." are amounts
+    for amount in ["Il valore è 12,03456789 circa.", "Totale: 1.234,3331234567"]:
+        assert found(amount) == [], amount
+    assert found("Rosa,1.75,3471234567") == [("TELEFONO", "3471234567")]
