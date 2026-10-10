@@ -359,3 +359,8 @@ def test_more_dash_lookalikes_and_undeclared_html_charset(tmp_path):
     html = "<p>Cellulare 333─9876543</p>".encode()  # UTF-8, no charset: bs4 guesses
     text = published(tmp_path, {"c.html": lambda p: p.write_bytes(html)})
     assert leaks(text, "3339876543") == [] and "Ō" not in text, text
+
+
+def test_profile_id_on_the_short_facebook_host():
+    t = "Profilo: fb.com/profile.php?id=100045678901234"
+    assert any(s.type == "PERSONA" and s.end == len(t) for s in pii._rules(t)), found(t)
