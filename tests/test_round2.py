@@ -295,3 +295,9 @@ def test_dash_lookalikes_are_folded():
     for c in "⁃˗➖─━⎯⁓ー┄╌":
         assert found(f"Tel. 333{c}765{c}4321") == [("TELEFONO", f"333{c}765{c}4321")], hex(ord(c))
         assert found(f"CF RSS{c}MRA{c}80A01H501U")[0][0] == "CF", hex(ord(c))
+
+
+def test_partita_iva_with_separators():
+    for v in ["1234567-8903", "123 456 789 03", "12345 678 903", "IT 0712-3456-787", "023 4567 8912"]:
+        assert ("PIVA", v) in found(f"P.IVA {v} del fornitore"), v
+    assert found("P.IVA 123 456 789 04 del fornitore") == []  # checksum fails

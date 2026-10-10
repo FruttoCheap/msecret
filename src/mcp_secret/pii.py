@@ -116,7 +116,7 @@ _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _ACCOUNT = r"(?i:\bc/c\b|\bconto\b|\baccount\b)"
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
-    ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d{{11}}{_E}"), _piva_ok),
+    ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d(?:[ -]?\d){{10}}{_E}"), lambda v: _piva_ok(_alnum(v))),
     # anchored: no O(n²). Spaces: Docling joins formatting runs with one (*x* .y@ *domain* .it,
     # *s* . *y* @ *Domain* .IT); after a spaced dot a label is lowercase or an ALL-CAPS TLD, so
     # "x@y.it .Grazie" ends at ".it".
