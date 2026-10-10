@@ -136,3 +136,14 @@ def test_email_split_inside_the_local_part(tmp_path):
     text = published(tmp_path, {"mail.html": html})  # "ufficio77 .acquisti@ dittabeta .com"
     assert leaks(text, "ufficio77", "acquisti") == [] and "[EMAIL_1]" in text, text
     assert found("Scrivi a info@ditta.it .Grazie") == [("EMAIL", "info@ditta.it")]
+
+
+def test_birth_dates_in_capitals_and_with_spelled_days(tmp_path):
+    note = """NATA IL 12 MARZO DEL 1958 A BARI.
+Nato il 9 Luglio Del 1977.
+NATO A ROMA IL 3 APRILE 1962.
+Reference: born on the first of May, 1980. Her brother, born on the twenty-second of June, 1983.
+"""
+    text = published(tmp_path, {"note.txt": note})
+    assert leaks(text, "12 MARZO DEL 1958", "9 Luglio Del 1977", "3 APRILE 1962",
+                 "first of May, 1980", "twenty-second of June, 1983") == [], text

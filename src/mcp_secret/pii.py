@@ -84,12 +84,14 @@ _SEP = r"\s*+[.|/-]?+\s*+"  # possessive: linear on padded table cells
 _CF = _SEP.join(["[A-Z]"] * 6 + [_OMO] * 2 + ["[A-EHLMPR-T]"] + [_OMO] * 2 + ["[A-Z]"]
                 + [_OMO] * 3 + ["[A-Z]"])
 _B, _E = r"(?<![^\W_])", r"(?![^\W_])"  # word boundaries where "_" is a separator (CI_<CF>.pdf)
-_MON = r"(?i:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec)[a-z]*\.?"
-_DAY = r"(?:\d{1,2}(?:°|st|nd|rd|th)?|(?i:primo))"  # 1°, 5th, "il primo maggio"
+# Any case: "NATA IL 12 MARZO DEL 1958", "Nato il 9 Luglio Del 1977", "1ST OF MAY".
+_MON = r"(?i:(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec)[a-z]*)\.?"
+_DAY = (r"(?i:\d{1,2}(?:°|st|nd|rd|th)?|primo|(?:(?:twenty|thirty)[- ]?)?(?:first|second|third"  # 1°, 5th,
+        r"|(?:four|fif|six|seven|eigh|nin|ten|eleven|twelf|[a-z]+teen|twentie|thirtie)th))")  # primo, first
 _DATE = (
     r"(?:\d{1,2}(?P<sep>[./-])\d{1,2}(?P=sep)(?:\d{4}|\d{2})|\d{4}-\d{2}-\d{2}"
-    rf"|{_DAY}(?:\s+of)?[\s-]+{_MON},?(?:\s+del)?[\s-]+'?(?:\d{{4}}|\d{{2}})\b"  # 1st of May, 1980
-    rf"|{_MON}\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}"  # Feb 14th, 1983
+    rf"|{_DAY}(?i:\s+of)?[\s-]+{_MON},?(?i:\s+del)?[\s-]+'?(?:\d{{4}}|\d{{2}})\b"  # 1st of May, 1980
+    rf"|{_MON}\s+{_DAY},?\s+\d{{4}}"  # Feb 14th, 1983
     r"|\d{1,2}(?P<rs>[./ ])(?:I{1,3}|IV|VI{0,3}|IX|XI{0,2})(?P=rs)\d{2,4})"  # 12.III.1970
 )
 # Birth context only: compact 19900705, a form's letter boxes "0 1 / 0 1 / 1 9 9 0", "|2|1|0|4|...".
