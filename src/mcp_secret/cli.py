@@ -28,7 +28,8 @@ def _any(kind: str, paths) -> str:
 def profile(root: Path | None = None) -> str:
     """sandbox-exec profile: no network. With `root` (serve): no reads of $HOME, the data root,
     other users, volumes and temp dirs except public/ and the Python runtime; no file writes
-    anywhere (inherited stdio fds still work); no exec but Python itself; no mach services."""
+    anywhere (inherited stdio fds still work); no exec but Python itself; no mach services; no
+    process info or signals but its own."""
     sbpl = "(version 1)(allow default)(deny network*)"
     if root is None:
         return sbpl
@@ -50,6 +51,10 @@ def profile(root: Path | None = None) -> str:
         "(deny process-exec*)",
         f"(allow process-exec {_any('literal', {sys.executable, os.path.realpath(sys.executable)})})",
         "(deny mach-lookup)",
+        # not "(target others)": it does not match an unsandboxed parent. ponytail: no SBPL rule
+        # gates sysctl KERN_PROCARGS2: same-user argv, and the environment of processes without
+        # hardened runtime, stay readable to a compromised serve (README, residual risks).
+        "(deny process-info* signal)(allow process-info* signal (target self))",
     ])
 
 

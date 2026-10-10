@@ -16,6 +16,7 @@ from test_leak import CLI
 from test_pii import generate
 
 from mcp_secret import pii, server
+from mcp_secret.cli import profile, sandbox_cmd
 
 TOKEN = re.compile(r"\[[A-Z]+(?:_[A-Z]+)*_\d+\]")
 
@@ -269,3 +270,22 @@ def test_serve_writes_no_file(tmp_path):
         p.kill()
         p.wait()
 
+
+PROC_PROBE = """
+import ctypes, os
+ppid, buf = os.getppid(), ctypes.create_string_buffer(4096)
+try:
+    os.kill(ppid, 0)
+    signal = True
+except PermissionError:
+    signal = False
+print(ctypes.CDLL(None).proc_pidpath(ppid, buf, len(buf)) > 0, signal)
+"""
+
+
+def test_serve_cannot_inspect_or_signal_its_parent(tmp_path):
+    (tmp_path / "public").mkdir()
+    r = subprocess.run(sandbox_cmd(profile(tmp_path), "-c", PROC_PROBE), capture_output=True,
+                       text=True, check=True)
+    # ponytail: KERN_PROCARGS2 (argv, env) skips the sandbox, see cli.profile
+    assert r.stdout.split() == ["False", "False"], r.stdout + r.stderr
