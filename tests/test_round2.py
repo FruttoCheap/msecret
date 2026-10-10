@@ -182,3 +182,9 @@ def test_more_profile_hosts_and_handle_labels(tmp_path):
     text = published(tmp_path, {"n.txt": "Profili: fb.com/marco.rossi.75 e insta: @sara.bianchi.92\n"})
     assert leaks(text, "marco.rossi.75", "sara.bianchi.92") == [], text
     assert found("Threads: cotone. Discord: problemi. IG: 50") == []
+
+
+def test_case_folds_the_regex_knows_but_lower_does_not(tmp_path):
+    text = published(tmp_path, {"a.txt": "Studio legale: www.yılmaz-hukuk.com.tr\n"}, deny="Yilmaz\n")
+    assert [t for t in re.findall(r"\[[^\]]*\]", text) if not TOKEN.fullmatch(t)] == [], text
+    assert leaks(text, "yılmaz") == [], text

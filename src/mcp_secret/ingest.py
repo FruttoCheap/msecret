@@ -120,9 +120,9 @@ def _hits(pat: re.Pattern, text: str) -> list[re.Match]:
 
 
 def _lookup(table: dict, m: re.Match) -> str:
-    # ponytail: re.IGNORECASE folds a few chars lower() does not (U+017F long s); those get a
-    # generic token instead of a crash whose traceback would print the value
-    return table.get(norm(m[0]), "[REDACTED]")
+    """The token of the value `m` matched. re.IGNORECASE also folds letters lower() keeps apart
+    ("yılmaz" matches "yilmaz"): then the value whose own pattern matches, never a bare tag."""
+    return table.get(norm(m[0])) or next(t for v, t in table.items() if _pattern([v]).fullmatch(m[0]))
 
 
 def _token(con: sqlite3.Connection, type_: str, value: str, new: dict) -> str:
