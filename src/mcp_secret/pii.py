@@ -191,8 +191,9 @@ _PHONE = re.compile(r"(?<![^\W_])(?<![+(/])(?:(?<=[^\W\d_]-)|(?<!-))(?<!\d\.)"
 _PHONE_TOK = re.compile(r"\(?\+?\d+\)?")
 _PHONE_CTX = re.compile(r"(?i)\b(?:tel|cell|phone|fax|mob|recapit|numero|whatsapp)\w*\W{0,12}$")
 # "12,<digits>", "1.234,<digits>": an amount, unless the digits alone are a mobile or a 9+ digit
-# landline after no thousands group ("Rossi 45,<phone>"); ",34,<digits>", ",1.75,<digits>": a CSV
-# column. ponytail: "Bianchi 7,<8-digit landline>" reads as an amount ("12,03456789").
+# landline after no thousands group ("Rossi 45,<phone>") or start with "+"/"00<digit>" (no
+# decimals do); ",34,<digits>", ",1.75,<digits>": a CSV column. ponytail: "Bianchi 7,<8-digit
+# landline>" reads as an amount ("12,03456789"), "anticipo 12,3456789012" as a phone (noise).
 _DECIMAL = re.compile(r"[^\d.,\n][\d.]*\d,$")
 _TABLE = re.compile(r"(?m)^\|.*\n(?:\|.*(?:\n|$))+")
 _ROW = re.compile(r"(?m)^\|.*")
@@ -203,7 +204,8 @@ _PART = re.compile(rf"[{_UP}][^\W\d_]*(?:['’-][^\W\d_]+)*")  # one word of a n
 def _phone_ok(s: str, before: str) -> bool:
     d = sum(c.isdigit() for c in s)
     if re.fullmatch(r"\d{1,2}([./-])\d{1,2}\1\d{2,4}", s) or _DECIMAL.search(before) and (
-            re.search(r"\.\d{3},$", before) or not re.fullmatch(r"3\d{8,9}|0\d{8,10}", _alnum(s))):
+            not re.match(r"[+(]|00\d", s) and (re.search(r"\.\d{3},$", before)
+                                                or not re.fullmatch(r"3\d{8,9}|0\d{8,10}", _alnum(s)))):
         return False
     if s[0] in "+(" or s.startswith("00"):
         return 8 <= d <= 15

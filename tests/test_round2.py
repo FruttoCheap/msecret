@@ -345,3 +345,8 @@ def test_account_number_across_cells_lines_and_more_words():
         assert ("IBAN", re.findall(r"\d+", t)[-1]) in found(t), t
     for t in ["Nel conto economico 2023 2024 i ricavi", "Il conto finale è di 1500000 euro."]:
         assert found(t) == [], t
+
+
+def test_phone_with_international_prefix_after_a_comma():
+    for v in ["+393478889990", "00393471230003"]:
+        assert found(f"Rossi 45,{v}") == [("TELEFONO", v)], v
