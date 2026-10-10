@@ -116,10 +116,11 @@ _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _RULES = [
     ("CF", re.compile(rf"(?i){_B}{_CF}{_E}"), lambda v: _cf_ok(_alnum(v))),
     ("PIVA", re.compile(rf"{_B}(?<!\+)(?:IT ?)?\d{{11}}{_E}"), _piva_ok),
-    # anchored: no O(n²). Spaces: Docling joins formatting runs with one (*x* .y@ *domain* .it);
-    # not before a capital ("x@y.it .Grazie" ends at ".it").
-    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-][\w.+'’-]{0,63}(?: \.[\w+'’-]+)* ?@ ?[\w-]+"
-                         r"(?:\.[\w-]+| \.[a-z\d][\w-]*)+"), None),
+    # anchored: no O(n²). Spaces: Docling joins formatting runs with one (*x* .y@ *domain* .it,
+    # *s* . *y* @ *Domain* .IT); after a spaced dot a label is lowercase or an ALL-CAPS TLD, so
+    # "x@y.it .Grazie" ends at ".it".
+    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-][\w.+'’-]{0,63}(?: \. ?[\w+'’-]+)* ?@ ?[\w-]+"
+                         r"(?:\.[\w-]+| \. ?(?:[a-z\d][\w-]*|[A-Z]{2,6}\b))+"), None),
     ("DATA_NASCITA", re.compile(  # only in context: "nato a X il", "data di nascita", "born"; the
         # value on the same line or right below it (a form's boxes: a table under the label)
         rf"(?i:\bnat[oa]\b|\bborn\b|nascita|date of birth|\bd\.?o\.?b\b)[^\n]{{0,60}}?(?:\n[\s|]*)?"

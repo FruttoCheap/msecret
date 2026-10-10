@@ -193,3 +193,17 @@ def test_case_folds_the_regex_knows_but_lower_does_not(tmp_path):
 def test_every_unicode_dash_is_folded(tmp_path):
     text = published(tmp_path, {"n.txt": "Tel. 333⸺765֊4321, CF RSS⸺MRA〜80A01H501U\n"})
     assert leaks(text, "3337654321", CF) == [], text
+
+
+# --- round 3: recall regressions of the second pass, sandbox writes and process info --------
+
+
+def test_email_split_before_a_capitalized_domain(tmp_path):
+    html = ("<p>Ufficio: ufficio99.resi@ <b>DittaDelta</b>.IT oppure "
+            "<b>s</b>.<i>marini</i>@<b>Rinaldi-Impianti</b>.IT, grazie.</p>")
+    text = published(tmp_path, {"mail.html": html})
+    assert leaks(text, "ufficio99.resi", "DittaDelta", "s.marini", "Rinaldi-Impianti") == [], text
+    for v in ["ufficio99.resi@ DittaDelta .IT", "s . marini @ Rinaldi-Impianti .IT",
+              "x @ ditta . it", "a .b @ c . IT"]:
+        assert found(f"Scrivere a {v} per info.") == [("EMAIL", v)], v
+    assert found("Scrivi a info@ditta.it .Grazie") == [("EMAIL", "info@ditta.it")]
