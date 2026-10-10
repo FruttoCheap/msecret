@@ -307,3 +307,11 @@ def test_grouped_account_number_after_its_label():
     for v in ["Conto n. 1234 5678 9012", "Account number: 1234-5678", "conto deposito 0012 3456 7890"]:
         assert ("IBAN", re.search(r"\d.*", v)[0]) in found(v), v
     assert found("Il conto finale è di 1 500 000 euro.") == []
+
+
+def test_social_label_before_a_profile_url():
+    for t in ["Facebook: fb.com/mario.rossi", "YouTube: youtube.com/c/mariorossi",
+              "Twitter: twitter.com/mrossi", "Telegram: t.me/mrossi",
+              "Profilo: facebook.com/profile.php?id=100012345678901"]:
+        assert any(s.type == "PERSONA" and s.end == len(t) for s in pii._rules(t)), t
+    assert found("Threads: cotone. Discord: problemi/altro. IG: 50") == []
