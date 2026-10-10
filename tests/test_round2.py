@@ -170,3 +170,9 @@ def test_whatsapp_link_with_plus_and_phone_after_a_dash(tmp_path):
     for amount in ["Il valore è 12,03456789 circa.", "Totale: 1.234,3331234567"]:
         assert found(amount) == [], amount
     assert found("Rosa,1.75,3471234567") == [("TELEFONO", "3471234567")]
+
+
+def test_account_number_on_the_line_below_its_label(tmp_path):
+    text = published(tmp_path, {"n.txt": "Account no.\n12345678\n\nAccount number\n\n31926819\n"})
+    assert leaks(text, "12345678", "31926819") == [], text
+    assert found("Il conto finale è di 1500000 euro.") == []

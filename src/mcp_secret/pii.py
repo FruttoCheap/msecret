@@ -146,9 +146,10 @@ _RULES = [
         r"|facebook|fb|youtube|threads|snapchat|discord|twitch|mastodon|bluesky)\b"
         r"(?::\s*@?|\s+@))[\w.-]*\w(?![\w.-]*@)"), None),
     ("TELEFONO", re.compile(r"(?i:\bwa\.me/)(?P<v>\+?\d{8,15})\b"), None),  # WhatsApp link as text
-    # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345".
-    ("IBAN", re.compile(r"(?i:\bc/c\b|\bconto(?: corrente)?\b|\baccount\b)[^\n\d]{0,15}?"
-                        r"(?P<v>\d{6,18})\b"), None),
+    # A bare account number after its label: "ABI 03069 CAB 09606 c/c n. 100000012345",
+    # "Account no.\n12345678". Only number words in between: "conto finale di 1500000" is no account.
+    ("IBAN", re.compile(r"(?i:\bc/c\b|\bconto\b|\baccount\b)(?:[\s|:.#°]|(?i:\b(?:n|no|nr|num|numero"
+                        r"|number|corrente|postale|bancario)\b))*(?P<v>\d{6,18})\b"), None),
     # "Pontecuti, lì 14 febbraio 2025": the place line of Italian letters and contracts.
     ("LUOGO", re.compile(rf"(?m)^(?P<v>{_CITY}),? (?:lì |li |addì )?{_DATE}"), None),
     ("TARGA", re.compile(  # car plates; after "targa": motorcycle AB 12345, old ROMA A12345
