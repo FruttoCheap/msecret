@@ -254,14 +254,19 @@ def _tables(text: str):
                 a += len(cell) + 1
 
 
+# Dashes Unicode files elsewhere: minus signs, hyphen bullet, swung dash, prolonged sound mark,
+# box-drawing horizontals.
+_DASHES = "\u2212\u2796\u02d7\u2043\u2053\u23af\u30fc\u2500\u2501\u2504\u2505\u2508\u2509\u254c\u254d"
+
+
 def _fold(m: re.Match) -> str:
     c, cat = m[0], unicodedata.category(m[0])
-    return "-" if cat == "Pd" or c == "\u2212" else " " if cat in ("Zs", "Mn", "Me") else c
+    return "-" if cat == "Pd" or c in _DASHES else " " if cat in ("Zs", "Mn", "Me") else c
 
 
 def _shadow(text: str) -> str:
-    """What the rules read: `text` with every Unicode dash as "-", every Unicode space and
-    combining mark (U+FE0F inside a number) as a space. Same length, so offsets hold."""
+    """What the rules read: `text` with every Unicode dash or lookalike as "-", every Unicode
+    space and combining mark (U+FE0F inside a number) as a space. Same length, so offsets hold."""
     return re.sub(r"[^\x00-\x7f]", _fold, text)
 
 

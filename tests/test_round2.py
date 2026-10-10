@@ -289,3 +289,9 @@ def test_serve_cannot_inspect_or_signal_its_parent(tmp_path):
                        text=True, check=True)
     # ponytail: KERN_PROCARGS2 (argv, env) skips the sandbox, see cli.profile
     assert r.stdout.split() == ["False", "False"], r.stdout + r.stderr
+
+
+def test_dash_lookalikes_are_folded():
+    for c in "⁃˗➖─━⎯⁓ー┄╌":
+        assert found(f"Tel. 333{c}765{c}4321") == [("TELEFONO", f"333{c}765{c}4321")], hex(ord(c))
+        assert found(f"CF RSS{c}MRA{c}80A01H501U")[0][0] == "CF", hex(ord(c))
