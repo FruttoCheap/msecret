@@ -394,3 +394,13 @@ def test_email_with_capitalized_labels_in_a_row():
         assert ("EMAIL", v) in found(f"Scrivere a {t} entro lunedì"), (t, found(t))
     assert found("Scrivi a info@ditta.it .Grazie. Poi") == [("EMAIL", "info@ditta.it")]
     assert ("EMAIL", "info@ditta.it") in found("Mail info@ditta.it. Tel. 06 1234567")
+
+
+def test_a_title_is_not_part_of_the_name(tmp_path):
+    t = "tra Avv. Concetta Savorgnan, nata a Roma, e PROF.SSA Druso Mariana. Firme: Concetta Savorgnan"
+    assert [t[s.start:s.end] for s in pii.detect(t) if s.type == "PERSONA"] == [
+        "Concetta Savorgnan", "Druso Mariana", "Concetta Savorgnan"]
+    assert pii._untitle("Dott.ssa X", pii.Span(0, 4, "PERSONA")) is None  # a window cut "Dott"
+    out = published(tmp_path, {"a.txt": "Il locatore Avv. Concetta Savorgnan firma.",
+                               "b.txt": "Firmato: Concetta Savorgnan"})
+    assert set(re.findall(r"\[PERSONA_\d+\]", out)) == {"[PERSONA_1]"}, out

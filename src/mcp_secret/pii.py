@@ -108,9 +108,12 @@ _CAP_CITY = rf"\d{{5}},?\s+{_CITY}(?:\s*\([A-Z]{{2}}\))?"
 # A field or table column holding a name.
 _LABEL = (r"Cognome|Nome|Nome e cognome|Cognome e nome|Nominativo|Intestatario|Dipendente|Referenze"
           r"|References?|Surname|(?:First |Last |Full )?[Nn]ame")
+_HON = (r"Sig(?:\.ra|\.na|\.)|Dott(?:\.ssa|\.)|Avv\.|Ing\.|Prof(?:\.ssa|\.)|Geom\.|Rag\.|Arch\."
+        r"|Mr\.|Mrs\.|Ms\.|Dr\.")
+# A title is no part of the name: "Avv. X" and "X" must get the same token.
+_HONOR = re.compile(rf"(?i:(?:{_HON})\s+|(?:{_HON}|sig|dott|avv|ing|prof|geom|rag|arch|dr|mrs?|ms)\.?\s*$)")
 _TITLE = (
-    r"(?:Sig(?:\.ra|\.na|\.)|Dott(?:\.ssa|\.)|Avv\.|Ing\.|Prof(?:\.ssa|\.)|Geom\.|Rag\.|Arch\."
-    rf"|Mr\.|Mrs\.|Ms\.|Dr\.|Gent(?:\.mo|\.ma|ile)|Egregi[oa]|Car[oa]|Ciao|Dear|Hi|Hello|(?:{_LABEL}):)"
+    rf"(?:{_HON}|Gent(?:\.mo|\.ma|ile)|Egregi[oa]|Car[oa]|Ciao|Dear|Hi|Hello|(?:{_LABEL}):)"
 )
 _NAME = rf"(?:[{_UP}][\w'’-]+|[A-Z]\.)"
 _ACCOUNT = r"(?i:\bc/c\b|\bconto\b|\baccount\b)"
@@ -362,9 +365,16 @@ def fetch_models() -> None:
     GLiNER.from_pretrained(_snapshot(offline=False))  # online load also caches the backbone config
 
 
+def _untitle(text: str, s: Span) -> Span | None:
+    """A model PERSONA span without its leading title; a bare title ("Dott", a window cut) is none."""
+    if s.type != "PERSONA" or not (m := _HONOR.match(text, s.start, s.end)):
+        return s
+    return Span(m.end(), s.end, s.type) if m.end() < s.end else None
+
+
 def detect(text: str) -> list[Span]:
     """Return sorted, non-overlapping spans. Never logs or returns anything but offsets/types."""
-    cands = [(0, s) for s in _rules(text)] + [(1, s) for s in _ner(text)]
+    cands = [(0, s) for s in _rules(text)] + [(1, u) for s in _ner(text) if (u := _untitle(text, s))]
     cands += [(1, s) for s in _parts(text, [s for _, s in cands])]
     # Overlapping spans of the same type are one value: take the union (a rule's partial
     # address plus the model's full one must not leave the rest exposed).
