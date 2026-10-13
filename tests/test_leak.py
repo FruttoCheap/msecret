@@ -114,6 +114,7 @@ async def _tools(env: dict, chunk_ids: list[int]) -> tuple[list, dict, str]:
     texts = []
     async with stdio_client(params) as (read, write), ClientSession(read, write) as s:
         await s.initialize()
+        assert all(t.annotations.read_only_hint for t in (await s.list_tools()).tools)
 
         async def call(name: str, **kw):
             r = await s.call_tool(name, kw)

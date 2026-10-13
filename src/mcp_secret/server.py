@@ -6,6 +6,7 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import ToolAnnotations
 
 TOKENS = ("Personal data is replaced by tokens like [PERSONA_3], [IBAN_1], [EMAIL_2]. "
           "Each token is one real entity and is the same in every document: reuse it in "
@@ -13,6 +14,9 @@ TOKENS = ("Personal data is replaced by tokens like [PERSONA_3], [IBAN_1], [EMAI
 
 app = MCPServer("mcp-secret", instructions=TOKENS)
 con: sqlite3.Connection
+# Clients may skip the per-call approval for read-only tools (Claude Desktop asks otherwise).
+RO = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True,
+                     open_world_hint=False)
 
 
 def connect(db: Path) -> sqlite3.Connection:
@@ -21,8 +25,8 @@ def connect(db: Path) -> sqlite3.Connection:
     return con
 
 
-@app.tool(description=f"""Full-text search (BM25) over the user's pseudonymized documents.
-{TOKENS} Query syntax (SQLite FTS5): words, prefix*, "exact phrase", AND, OR, NOT,
+@app.tool(annotations=RO, description=f"""Full-text search (BM25) over the user's
+pseudonymized documents. {TOKENS} Query syntax (SQLite FTS5): words, prefix*, "exact phrase", AND, OR, NOT,
 tokens without brackets (PERSONA_3). Returns up to k (max 20) chunks, best first.""")
 def search(query: str, k: int = 10) -> list[dict]:
     try:
@@ -34,7 +38,7 @@ def search(query: str, k: int = 10) -> list[dict]:
     return [{"chunk_id": i, "doc_id": d, "text": t, "score": s} for i, d, t, s in rows]
 
 
-@app.tool()
+@app.tool(annotations=RO)
 def get_chunk(chunk_id: int, neighbors: int = 0) -> list[dict]:
     """Chunk `chunk_id` plus up to `neighbors` (0-2) chunks before and after it, in document order."""
     n = max(0, min(neighbors, 2))
@@ -44,7 +48,7 @@ def get_chunk(chunk_id: int, neighbors: int = 0) -> list[dict]:
     return [{"chunk_id": i, "doc_id": d, "text": t} for i, d, t in rows]
 
 
-@app.tool()
+@app.tool(annotations=RO)
 def list_sources() -> list[dict]:
     """Indexed documents: random doc_id and chunk count. Titles and paths are not exported."""
     rows = con.execute("SELECT doc_id, count(*) FROM chunks GROUP BY doc_id ORDER BY doc_id")

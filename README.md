@@ -30,10 +30,14 @@ uv run mcp-secret models     # one-time model download, the only command that us
 uv run mcp-secret ingest ~/Documents/clienti    # files or folders; re-run any time
 # 3f9c0a1b2c3d4e5f	4 chunks	/Users/you/Documents/clienti/contratto.pdf
 uv run mcp-secret show 3f9c0a1b2c3d4e5f         # exactly what the agent sees
+uv run mcp-secret list                          # indexed files: changed or missing ones flagged
+uv run mcp-secret review 3f9c0a1b2c3d4e5f       # the text in clear, what is masked, which token
+uv run mcp-secret deny add "Mario Rossi"        # always mask it (`allow add`: never), then ingest
 ```
 
-`ingest` prints each file's full path, in clear, to your terminal: run it yourself, not through
-an agent whose output leaves the machine (a cloud agent would send the paths along).
+`ingest` and `list` print each file's full path, and `review` the document's text, in clear, to
+your terminal: run them yourself, not through an agent whose output leaves the machine (a cloud
+agent would send the paths and the text along).
 
 Formats: PDF, DOCX, XLSX, PPTX, HTML, MD, images (OCR), EML, TXT. Unchanged files are skipped;
 changed files replace their chunks; files deleted or moved out of an ingested folder lose theirs.
@@ -44,11 +48,14 @@ The data root is `~/Library/Application Support/mcp-secret` (override with `MCP_
 | --- | --- |
 | `private/private.db` | file paths and the value → token map (0600, never opened by `serve`) |
 | `private/deny.txt` | values to always mask, one per line (masked as `PERSONA`) |
-| `private/allow.txt` | values never to mask, one per line (applies to new ingests) |
+| `private/allow.txt` | values never to mask, one per line (applies to documents indexed afterwards: `ingest --force`) |
 | `public/public.db` | pseudonymized chunks + full-text index, nothing else |
 
-`show` reveals a missed value? Add it to `deny.txt` and run `ingest` again: it is masked in
-new documents and scrubbed from those already indexed.
+`show` reveals a missed value? `deny add` it (or add a line to `deny.txt`) and run `ingest`
+again: it is masked in new documents and scrubbed from those already indexed.
+
+Every command takes `--json` (before the command) and then prints one JSON object per line:
+the contract a UI builds on, in [docs/cli-json.md](docs/cli-json.md).
 
 ## Residual risks
 
@@ -69,7 +76,9 @@ new documents and scrubbed from those already indexed.
 
 ## Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`, then restart Claude:
+`uv run mcp-secret desktop-config --install` adds the server to Claude Desktop's config (the
+old file is kept as `.bak`; `--uninstall` removes it again), then restart Claude. By hand: add to
+`~/Library/Application Support/Claude/claude_desktop_config.json`, then restart Claude:
 
 ```json
 {

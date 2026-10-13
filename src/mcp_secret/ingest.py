@@ -152,22 +152,33 @@ def _token(con: sqlite3.Connection, type_: str, value: str, new: dict) -> str:
     return token
 
 
-def _apply(text: str, cands: list[tuple[int, int, str]]) -> str:
-    """Replace each (start, end, token); overlapping ranges merge, so nothing in between leaks."""
-    out, end = [], 0
+def _merge(cands) -> list[list]:
+    """Sorted, non-overlapping [start, end, token]: overlapping ranges merge under the first
+    token, so nothing in between leaks."""
+    out: list[list] = []
     for s, e, token in sorted(cands):
-        if s < end:
-            end = max(end, e)
-            continue
+        if out and s < out[-1][1]:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e, token])
+    return out
+
+
+def _apply(text: str, cands: list[tuple[int, int, str]]) -> str:
+    """Replace each (start, end, token); overlapping ranges merge (_merge)."""
+    out, end = [], 0
+    for s, e, token in _merge(cands):
         out += [text[end:s], token]
         end = e
     return "".join(out) + text[end:]
 
 
-def mask(con: sqlite3.Connection, text: str, spans: list, allow: set[str], new: dict) -> str:
-    """Detected spans plus every known value (sweep) become [TYPE_N] tokens. A one-word name
-    that is a word of a full name in this text ("Rossi" after "Mario Rossi") takes that name's
-    token and is no entity: swept through every document, the surname Costa would mask coasts."""
+def masks(con: sqlite3.Connection, text: str, spans: list, allow: set[str],
+          new: dict) -> list[list]:
+    """What becomes a [TYPE_N] token in `text`, as _merge()d [start, end, token]: detected spans
+    plus every known value (sweep). A one-word name that is a word of a full name in this text
+    ("Rossi" after "Mario Rossi") takes that name's token and is no entity: swept through every
+    document, the surname Costa would mask coasts."""
     keep = [(s, v) for s in spans
             if norm(v := text[s.start:s.end]) not in allow and not _NOISE.fullmatch(v)]
     full = {}  # ponytail: two full names sharing a word, the lone word takes the last one's token
@@ -179,7 +190,7 @@ def mask(con: sqlite3.Connection, text: str, spans: list, allow: set[str], new: 
     known = {v: t for v, t in con.execute("SELECT value, token FROM entities") if v not in allow}
     if known:
         cands += [(m.start(), m.end(), _lookup(known, m)) for m in _hits(_pattern(known), text)]
-    return _apply(text, cands)
+    return _merge(cands)
 
 
 def sweep(con: sqlite3.Connection, new: dict) -> None:
@@ -240,7 +251,41 @@ def files(paths: list[Path]):
             yield p
 
 
-def prune(con: sqlite3.Connection, folders: list[Path]) -> None:
+def lists(con: sqlite3.Connection, priv: Path) -> tuple[set[str], dict[str, str]]:
+    """allow.txt and deny.txt as ingest applies them: the values never to mask, and every deny
+    value learned as an entity (value -> token). A value in both is masked."""
+    # ponytail: deny.txt values are typed PERSONA, add a "TYPE:" prefix if others need it
+    deny = {norm(v): _token(con, "PERSONA", v, {}) for v in _lines(priv / "deny.txt")}
+    return {norm(v) for v in _lines(priv / "allow.txt")} - deny.keys(), deny
+
+
+def digest(path: Path) -> str | None:
+    """The file's sha256, None if it cannot be read (deleted, moved, no permission)."""
+    try:
+        with open(path, "rb") as f:
+            return hashlib.file_digest(f, "sha256").hexdigest()
+    except OSError:
+        return None
+
+
+def _doc(doc_id: str | None, path, chunks: int | None, status: str,
+         error: str | None = None) -> dict:
+    return {"event": "doc", "doc_id": doc_id, "path": str(path), "chunks": chunks, "status": status,
+            "error": error}
+
+
+def _print(ev: dict) -> None:
+    """Human output of run(): doc_id, chunk count or status, path; failures on stderr, by type."""
+    if ev["event"] != "doc":
+        return
+    if ev["status"] == "error":
+        print(f"error\t{ev['error']}\t{ev['path']}", file=sys.stderr, flush=True)
+    else:
+        what = f"{ev['chunks']} chunks" if ev["status"] == "indexed" else ev["status"]
+        print(f"{ev['doc_id']}\t{what}\t{ev['path']}", flush=True)
+
+
+def prune(con: sqlite3.Connection, folders: list[Path], emit) -> None:
     """Forget documents whose file is gone from an ingested folder (deleted or moved)."""
     for doc_id, path in con.execute("SELECT id, path FROM docs").fetchall():
         p = Path(path)
@@ -249,50 +294,79 @@ def prune(con: sqlite3.Connection, folders: list[Path]) -> None:
                 con.execute("BEGIN IMMEDIATE")
                 con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
                 con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
-            print(f"{doc_id}\tremoved\t{path}", flush=True)
+            emit(_doc(doc_id, path, 0, "removed"))
 
 
-def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str]) -> str:
+def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str],
+                force: bool) -> tuple[str, int | None]:
+    """(doc_id, chunk count), the count None if the file is unchanged and not `force`d."""
     sha = hashlib.sha256(path.read_bytes()).hexdigest()
     row = con.execute("SELECT id, sha256 FROM docs WHERE path = ?", (str(path),)).fetchone()
-    if row and row[1] == sha:
-        return f"{row[0]}\tunchanged"
+    if row and row[1] == sha and not force:
+        return row[0], None
     text = clean(parse(path))
     spans = pii.detect(text)  # slow part, outside the write lock
     doc_id = row[0] if row else secrets.token_hex(8)
     new: dict[str, str] = {}
     with con:  # one transaction over private.db + public.db
         con.execute("BEGIN IMMEDIATE")
-        chunks = chunk(mask(con, text, spans, allow, new))
+        chunks = chunk(_apply(text, masks(con, text, spans, allow, new)))
         con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
         sweep(con, new)
         con.executemany("INSERT INTO pub.chunks(doc_id, seq, text) VALUES (?, ?, ?)",
                         [(doc_id, i, c) for i, c in enumerate(chunks)])
         con.execute("INSERT OR REPLACE INTO docs VALUES (?, ?, ?)", (doc_id, str(path), sha))
-    return f"{doc_id}\t{len(chunks)} chunks"
+    return doc_id, len(chunks)
 
 
-def run(root: Path, paths: list[Path]) -> int:
+def run(root: Path, paths: list[Path], force: bool = False, emit=_print) -> int:
+    """Ingest files and folders; `emit` gets the events of docs/cli-json.md (start, doc, done)."""
     priv = root / "private"
     (root / "public").mkdir(exist_ok=True)
     con = sqlite3.connect(priv / "private.db", isolation_level=None)
     con.execute("ATTACH ? AS pub", (str(root / "public" / "public.db"),))
     con.execute("PRAGMA secure_delete = ON")  # no schema: applies to both files
     con.executescript(SCHEMA)
-    allow = {norm(v) for v in _lines(priv / "allow.txt")}
-    new: dict[str, str] = {}
-    with con:  # deny.txt: learn new values, scrub them from chunks already published
-        con.execute("BEGIN IMMEDIATE")
-        for v in _lines(priv / "deny.txt"):
-            # ponytail: deny.txt values are typed PERSONA, add a "TYPE:" prefix if others need it
-            _token(con, "PERSONA", v, new)
-        sweep(con, new)
-    prune(con, [p.resolve() for p in paths if p.is_dir()])
+    todo = list(files(paths))
+    emit({"event": "start", "files": len(todo)})
+    with con:  # deny.txt: learn new values, scrub every deny value from chunks already published
+        con.execute("BEGIN IMMEDIATE")  # (also one that was allowed when they were published)
+        allow, deny = lists(con, priv)
+        sweep(con, deny)
+    prune(con, [p.resolve() for p in paths if p.is_dir()], emit)
+    counts = dict(con.execute("SELECT doc_id, count(*) FROM pub.chunks GROUP BY doc_id"))
     failed = 0
-    for path in files(paths):
+    for path in todo:
         try:
-            print(f"{ingest_file(con, path, allow)}\t{path}", flush=True)
+            doc_id, n = ingest_file(con, path, allow, force)
+            if n is not None:
+                counts[doc_id] = n
+            emit(_doc(doc_id, path, counts.get(doc_id, 0), "unchanged" if n is None else "indexed"))
         except Exception as e:  # noqa: BLE001 - one bad file never stops the others
             failed += 1
-            print(f"error\t{type(e).__name__}\t{path}", file=sys.stderr, flush=True)
+            row = con.execute("SELECT id FROM docs WHERE path = ?", (str(path),)).fetchone()
+            emit(_doc(row and row[0], path, None, "error", type(e).__name__))
+    emit({"event": "done"})
     return 1 if failed else 0
+
+
+def review(root: Path, doc_id: str) -> dict | None:
+    """A document as ingest would publish it now, in clear: its text and the masked spans, with
+    their type and token. Writes nothing: it works on an in-memory copy of private.db, where a
+    value ingest would learn gets the token it would get. None if `doc_id` is unknown."""
+    con = sqlite3.connect(":memory:")
+    src = sqlite3.connect((root / "private" / "private.db").as_uri() + "?mode=ro", uri=True)
+    src.backup(con)
+    src.close()
+    row = con.execute("SELECT path, sha256 FROM docs WHERE id = ?", (doc_id,)).fetchone()
+    if not row:
+        return None
+    sha = digest(Path(row[0]))
+    out = {"doc_id": doc_id, "path": row[0], "exists": sha is not None,
+           "stale": sha not in (None, row[1]), "text": "", "spans": []}
+    if sha:
+        allow, _ = lists(con, root / "private")
+        out["text"] = text = clean(parse(Path(row[0])))
+        out["spans"] = [{"start": s, "end": e, "type": t[1:-1].rsplit("_", 1)[0], "token": t}
+                        for s, e, t in masks(con, text, pii.detect(text), allow, {})]
+    return out
