@@ -26,7 +26,8 @@ def connect(db: Path) -> sqlite3.Connection:
 
 
 @app.tool(annotations=RO, description=f"""Full-text search (BM25) over the user's
-pseudonymized documents. {TOKENS} Query syntax (SQLite FTS5): words, prefix*, "exact phrase", AND, OR, NOT,
+pseudonymized documents. {TOKENS}
+Query syntax (SQLite FTS5): words, prefix*, "exact phrase", AND, OR, NOT,
 tokens without brackets (PERSONA_3). Returns up to k (max 20) chunks, best first.""")
 def search(query: str, k: int = 10) -> list[dict]:
     try:
