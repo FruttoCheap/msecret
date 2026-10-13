@@ -2,7 +2,7 @@ import Foundation
 
 /// The only component that launches the core: `mcp-secret --json <args>`, stdout decoded line by
 /// line (docs/cli-json.md), cancelled with SIGTERM. Views never launch processes.
-struct CLI: Sendable {
+struct CLI: Sendable, Equatable {
     var executable: URL
     var environment: [String: String] = [:]
 
@@ -12,19 +12,24 @@ struct CLI: Sendable {
         .deletingLastPathComponent().deletingLastPathComponent()
         .appending(path: ".venv/bin/mcp-secret").path
 
+    func process(_ args: [String], stdout: Pipe) -> Process {
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["--json"] + args
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = stdout
+        // ponytail: stderr is dropped (it may quote documents); error lines carry what we show
+        process.standardError = FileHandle.nullDevice
+        return process
+    }
+
     /// Every event but `error`, which ends the stream by throwing a `CLIError`. A run that exits
     /// non-zero without `done` (crash, kill) throws too; `ingest` exits 1 when a file failed and
     /// still ends with `done`.
     func run(_ args: [String]) -> AsyncThrowingStream<Event, Error> {
         AsyncThrowingStream { continuation in
-            let process = Process(), out = Pipe()
-            process.executableURL = executable
-            process.arguments = ["--json"] + args
-            process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
-            process.standardInput = FileHandle.nullDevice
-            process.standardOutput = out
-            // ponytail: stderr is dropped (it may quote documents); error lines carry what we show
-            process.standardError = FileHandle.nullDevice
+            let out = Pipe(), process = process(args, stdout: out), lines = CLI.lines(out)
             let exit = AsyncStream<Int32> { c in
                 process.terminationHandler = { c.yield($0.terminationStatus); c.finish() }
             }
@@ -32,7 +37,7 @@ struct CLI: Sendable {
                 do {
                     try process.run()
                     var failure: CLIError?, done = false
-                    for try await line in out.fileHandleForReading.bytes.lines {
+                    for await line in lines {
                         let event = try Event.decode(line)
                         if case .error(let e) = event { failure = e; continue }
                         if case .done = event { done = true }
@@ -55,10 +60,103 @@ struct CLI: Sendable {
     }
 
     /// All the events of a short command.
-    func events(_ args: String...) async throws -> [Event] {
+    func events(_ args: String...) async throws -> [Event] { try await events(args) }
+
+    func events(_ args: [String]) async throws -> [Event] {
         var all: [Event] = []
         for try await event in run(args) { all.append(event) }
         return all
+    }
+
+    /// A pipe's lines as they come. Not FileHandle.bytes: it reads every handle on one shared
+    /// actor, so a command with nothing to say yet (an ingest between files) would stall the rest.
+    static func lines(_ pipe: Pipe) -> AsyncStream<String> {
+        let rest = Rest()
+        return AsyncStream { c in
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                for line in rest.lines(after: data) { c.yield(line) }
+                if data.isEmpty { handle.readabilityHandler = nil; c.finish() }
+            }
+        }
+    }
+
+    /// `review -`, running: document ids go in on stdin, one `review` or `error` line comes out
+    /// for each, in order.
+    struct Worker {
+        let process: Process
+        let input: FileHandle
+        var lines: AsyncStream<String>.Iterator
+
+        mutating func review(_ docId: String) async throws -> Review {
+            try input.write(contentsOf: Data("\(docId)\n".utf8))
+            guard let line = await lines.next() else { throw CLIError(error: "failed", message: "the reviewer quit") }
+            switch try Event.decode(line) {
+            case .review(let r): return r
+            case .error(let e): throw e
+            case let other: throw CLIError(error: "failed", message: "unexpected \(other)")
+            }
+        }
+    }
+
+    func worker() throws -> Worker {
+        let out = Pipe(), input = Pipe(), process = process(["review", "-"], stdout: out)
+        process.standardInput = input
+        _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)  // dead worker: an error, not SIGPIPE
+        let lines = CLI.lines(out).makeAsyncIterator()
+        try process.run()
+        return Worker(process: process, input: input.fileHandleForWriting, lines: lines)
+    }
+}
+
+/// What a pipe sent after its last newline. A readability handler runs one call at a time.
+private final class Rest: @unchecked Sendable {
+    var data = Data()
+
+    func lines(after more: Data) -> [String] {
+        data.append(more)
+        var lines: [String] = []
+        while let newline = data.firstIndex(of: UInt8(ascii: "\n")) {
+            lines.append(String(decoding: data[..<newline], as: UTF8.self))
+            data.removeSubrange(...newline)
+        }
+        return lines
+    }
+}
+
+/// Reviews through one long-lived `review -`: the core loads its models once (seconds), then
+/// answers each document in a fraction of a second. Requests run one at a time, in order, so
+/// answers never shift; a request whose view went away is still answered and dropped. The worker
+/// starts on first use (or `warm()`), restarts if it dies, and exits when this goes away or the
+/// app quits (its stdin closes).
+final class Reviewer: Sendable {
+    let cli: CLI
+    private let requests: AsyncStream<(String, CheckedContinuation<Review, Error>)?>.Continuation
+
+    init(cli: CLI) {
+        self.cli = cli
+        let (stream, requests) = AsyncStream<(String, CheckedContinuation<Review, Error>)?>.makeStream()
+        self.requests = requests
+        Task {
+            var worker: CLI.Worker?
+            for await request in stream {
+                do {
+                    if worker?.process.isRunning != true { worker = try cli.worker() }
+                    if let (docId, reply) = request { reply.resume(returning: try await worker!.review(docId)) }
+                } catch {
+                    request?.1.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    deinit { requests.finish() }
+
+    /// Starts the worker ahead of the first review.
+    func warm() { requests.yield(nil) }
+
+    func review(_ docId: String) async throws -> Review {
+        try await withCheckedThrowingContinuation { requests.yield((docId, $0)) }
     }
 }
 

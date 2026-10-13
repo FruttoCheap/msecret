@@ -1,0 +1,976 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "%@: %lld of %lld": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: %lld di %lld"
+          }
+        }
+      }
+    },
+    "Add Documents…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi documenti…"
+          }
+        }
+      }
+    },
+    "Add your documents": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi i tuoi documenti"
+          }
+        }
+      }
+    },
+    "Address": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzo"
+          }
+        }
+      }
+    },
+    "Adds mcp-secret to Claude Desktop's configuration. Restart Claude afterwards.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiunge mcp-secret alla configurazione di Claude Desktop. Poi riavvia Claude."
+          }
+        }
+      }
+    },
+    "Always Mask": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maschera sempre"
+          }
+        }
+      }
+    },
+    "Bank account": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conto bancario"
+          }
+        }
+      }
+    },
+    "CLI": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CLI"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulla"
+          }
+        }
+      }
+    },
+    "Changed since indexing": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiato dopo l'indicizzazione"
+          }
+        }
+      }
+    },
+    "Changes last until you quit. Press Return to apply.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le modifiche valgono fino all'uscita. Premi Invio per applicarle."
+          }
+        }
+      }
+    },
+    "Choose…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli…"
+          }
+        }
+      }
+    },
+    "Chunk %lld": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frammento %lld"
+          }
+        }
+      }
+    },
+    "Claude Desktop": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Desktop"
+          }
+        }
+      }
+    },
+    "Claude Desktop's configuration file is not valid: fix or delete it, then try again.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il file di configurazione di Claude Desktop non è valido: correggilo o eliminalo, poi riprova."
+          }
+        }
+      }
+    },
+    "Completed": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completato"
+          }
+        }
+      }
+    },
+    "Connect": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collega"
+          }
+        }
+      }
+    },
+    "Connect Claude Desktop": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collega Claude Desktop"
+          }
+        }
+      }
+    },
+    "Connected": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collegato"
+          }
+        }
+      }
+    },
+    "Core": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Core"
+          }
+        }
+      }
+    },
+    "Could not be indexed": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indicizzazione non riuscita"
+          }
+        }
+      }
+    },
+    "Data root": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartella dei dati"
+          }
+        }
+      }
+    },
+    "Date of birth": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Data di nascita"
+          }
+        }
+      }
+    },
+    "Default": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predefinita"
+          }
+        }
+      }
+    },
+    "Document layout models": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelli di impaginazione"
+          }
+        }
+      }
+    },
+    "Don't Mask": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non mascherare"
+          }
+        }
+      }
+    },
+    "Don't Mask…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non mascherare…"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fine"
+          }
+        }
+      }
+    },
+    "Download": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarica"
+          }
+        }
+      }
+    },
+    "Download Models": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarica i modelli"
+          }
+        }
+      }
+    },
+    "Download the models": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarica i modelli"
+          }
+        }
+      }
+    },
+    "Downloaded": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scaricati"
+          }
+        }
+      }
+    },
+    "Downloading models": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download dei modelli"
+          }
+        }
+      }
+    },
+    "Drop files and folders here": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trascina qui file e cartelle"
+          }
+        }
+      }
+    },
+    "Drop files and folders on the list on the left, or choose them. They are read here, on this Mac.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trascina file e cartelle sulla lista a sinistra, oppure sceglili. Vengono letti qui, su questo Mac."
+          }
+        }
+      }
+    },
+    "Email": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Email"
+          }
+        }
+      }
+    },
+    "File missing": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File mancante"
+          }
+        }
+      }
+    },
+    "ID document": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Documento d'identità"
+          }
+        }
+      }
+    },
+    "In use": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In uso"
+          }
+        }
+      }
+    },
+    "Index every document again: applies what you chose not to mask everywhere.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indicizza di nuovo tutti i documenti: applica ovunque ciò che hai scelto di non mascherare."
+          }
+        }
+      }
+    },
+    "Indexed, %lld chunks": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Indexed, %lld chunk"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Indexed, %lld chunks"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Indicizzato, %lld frammento"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Indicizzato, %lld frammenti"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Indexing": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indicizzazione"
+          }
+        }
+      }
+    },
+    "Install": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installa"
+          }
+        }
+      }
+    },
+    "Last used by Claude": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ultimo uso da Claude"
+          }
+        }
+      }
+    },
+    "Legend": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legenda"
+          }
+        }
+      }
+    },
+    "License plate": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Targa"
+          }
+        }
+      }
+    },
+    "Missing": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mancanti"
+          }
+        }
+      }
+    },
+    "Models": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelli"
+          }
+        }
+      }
+    },
+    "Never": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mai"
+          }
+        }
+      }
+    },
+    "Next": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Successivo"
+          }
+        }
+      }
+    },
+    "No document selected": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun documento selezionato"
+          }
+        }
+      }
+    },
+    "No documents yet": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancora nessun documento"
+          }
+        }
+      }
+    },
+    "Not connected": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non collegato"
+          }
+        }
+      }
+    },
+    "Nothing is indexed yet: drop some documents first.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non c'è ancora niente di indicizzato: prima trascina qualche documento."
+          }
+        }
+      }
+    },
+    "Occurrences of %@: %lld": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Occorrenze di %@: %lld"
+          }
+        }
+      }
+    },
+    "Once, about 2 GB. It is the only step that uses the network.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una volta sola, circa 2 GB. È l'unico passo che usa la rete."
+          }
+        }
+      }
+    },
+    "Organization": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Organizzazione"
+          }
+        }
+      }
+    },
+    "Original": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Originale"
+          }
+        }
+      }
+    },
+    "Person": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Persona"
+          }
+        }
+      }
+    },
+    "Personal data detector": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rilevatore di dati personali"
+          }
+        }
+      }
+    },
+    "Phone": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefono"
+          }
+        }
+      }
+    },
+    "Pick a document on the left, or drop files and folders there.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli un documento a sinistra, oppure trascinaci file e cartelle."
+          }
+        }
+      }
+    },
+    "Place": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Luogo"
+          }
+        }
+      }
+    },
+    "Previous": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Precedente"
+          }
+        }
+      }
+    },
+    "Publish this value in clear?": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pubblicare questo valore in chiaro?"
+          }
+        }
+      }
+    },
+    "Re-index": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-indicizza"
+          }
+        }
+      }
+    },
+    "Re-index All": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-indicizza tutto"
+          }
+        }
+      }
+    },
+    "Reading the original…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lettura dell'originale…"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimuovi"
+          }
+        }
+      }
+    },
+    "Restart Claude Desktop to apply the change.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riavvia Claude Desktop per applicare la modifica."
+          }
+        }
+      }
+    },
+    "Select a highlighted value to find its token here.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seleziona un valore evidenziato per trovare qui il suo token."
+          }
+        }
+      }
+    },
+    "Select a highlighted value, or select text the agent should not see.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seleziona un valore evidenziato, oppure il testo che l'agente non deve vedere."
+          }
+        }
+      }
+    },
+    "Setup Guide": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guida iniziale"
+          }
+        }
+      }
+    },
+    "Something went wrong": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qualcosa non ha funzionato"
+          }
+        }
+      }
+    },
+    "Status": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stato"
+          }
+        }
+      }
+    },
+    "Step %lld, done: %@": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passo %lld, completato: %@"
+          }
+        }
+      }
+    },
+    "Step %lld: %@": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passo %lld: %@"
+          }
+        }
+      }
+    },
+    "Tax code": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codice fiscale"
+          }
+        }
+      }
+    },
+    "The configured CLI no longer exists: install again.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La CLI configurata non esiste più: installa di nuovo."
+          }
+        }
+      }
+    },
+    "The core did not answer: check the CLI path in Settings. %@": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il core non risponde: controlla il percorso della CLI nelle Impostazioni. %@"
+          }
+        }
+      }
+    },
+    "The core failed (%@).": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Errore del core (%@)."
+          }
+        }
+      }
+    },
+    "The original is gone: only what the agent sees is left.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'originale non c'è più: resta solo ciò che vede l'agente."
+          }
+        }
+      }
+    },
+    "The selected text is empty.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il testo selezionato è vuoto."
+          }
+        }
+      }
+    },
+    "This document is no longer in the index.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo documento non è più nell'indice."
+          }
+        }
+      }
+    },
+    "This file changed after it was indexed: the original shows its new text, the agent still sees the old one.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo file è cambiato dopo l'indicizzazione: l'originale mostra il testo nuovo, l'agente vede ancora quello vecchio."
+          }
+        }
+      }
+    },
+    "Three steps, and Claude can search your documents without ever seeing names, tax codes, IBANs or contacts.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tre passi, e Claude può cercare nei tuoi documenti senza mai vedere nomi, codici fiscali, IBAN o contatti."
+          }
+        }
+      }
+    },
+    "Unchanged, %lld chunks": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Unchanged, %lld chunk"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Unchanged, %lld chunks"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Invariato, %lld frammento"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Invariato, %lld frammenti"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "VAT number": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Partita IVA"
+          }
+        }
+      }
+    },
+    "Welcome to mcp-secret": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benvenuto in mcp-secret"
+          }
+        }
+      }
+    },
+    "What the agent sees": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cosa vede l'agente"
+          }
+        }
+      }
+    },
+    "“%@” becomes visible to the agent in this document. Other documents keep it masked until you re-index them (Re-index All).": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” diventa visibile all'agente in questo documento. Negli altri documenti resta mascherato finché non li re-indicizzi (Re-indicizza tutto)."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

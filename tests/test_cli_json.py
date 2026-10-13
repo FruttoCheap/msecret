@@ -3,11 +3,14 @@
 import json
 import os
 import signal
+import sqlite3
 import subprocess
 from pathlib import Path
 
+import pytest
 from test_leak import CLI
 
+from mcp_secret import ingest, pii
 from mcp_secret.ingest import _apply, chunk
 
 CONTRACT = ("Contratto tra Mario Rossi (CF RSSMRA80A01H501U) e la ditta Alfa.\n\n"
@@ -63,6 +66,11 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
     assert all(s["token"].startswith(f"[{s['type']}_") for s in r["spans"])
     masked = _apply(r["text"], [(s["start"], s["end"], s["token"]) for s in r["spans"]])
     assert chunk(masked) == [c["text"] for c in shown] and shown[0]["event"] == "chunk"
+    # review -: one worker, models loaded once, a line per doc_id read on stdin until it closes
+    w = subprocess.run([CLI, "--json", "review", "-"], env=env, input=f"{a['doc_id']}\n\n{'f' * 16}\n",
+                       capture_output=True, text=True, check=True)
+    assert [json.loads(line) for line in w.stdout.splitlines()] == [
+        r, {"event": "error", "error": "no_document", "message": f"no document {'f' * 16}"}]
     for cmd in ("show", "review"):
         assert run(env, cmd, "f" * 16, code=1) == [
             {"event": "error", "error": "no_document", "message": f"no document {'f' * 16}"}]
@@ -158,3 +166,27 @@ def test_cancel_rolls_back(tmp_path):
     assert p.wait() == 143 and not list(root.rglob("*-journal"))
     indexed = {e["doc_id"] for e in map(json.loads, lines) if e["event"] == "doc"}
     assert {d["doc_id"] for d in run(env, "list")} == indexed
+
+
+def test_review_reuses_what_ingest_detected(tmp_path, monkeypatch):
+    root, docs = tmp_path / "data", tmp_path / "docs"
+    (root / "private").mkdir(parents=True)
+    docs.mkdir()
+    (docs / "a.txt").write_text(CONTRACT)
+    assert ingest.run(root, [docs], emit=lambda ev: None) == 0
+    db = root / "private" / "private.db"
+    [(doc_id,)] = sqlite3.connect(db).execute("SELECT id FROM docs")
+    stored = ingest.review(root, doc_id)
+    with sqlite3.connect(db) as con:
+        con.execute("DROP TABLE detected")  # an index from before: detected again, same answer
+    assert ingest.review(root, doc_id) == stored
+    assert ingest.run(root, [docs], force=True, emit=lambda ev: None) == 0
+
+    def detect(text):
+        raise AssertionError("detected again")
+
+    monkeypatch.setattr(pii, "detect", detect)
+    assert ingest.review(root, doc_id) == stored  # same text: the spans stored at ingest
+    (docs / "a.txt").write_text(CONTRACT + "Fine.\n")
+    with pytest.raises(AssertionError, match="detected again"):  # new text: detected
+        ingest.review(root, doc_id)

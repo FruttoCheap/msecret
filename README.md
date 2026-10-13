@@ -46,7 +46,7 @@ The data root is `~/Library/Application Support/mcp-secret` (override with `MCP_
 
 | File | Holds |
 | --- | --- |
-| `private/private.db` | file paths and the value → token map (0600, never opened by `serve`) |
+| `private/private.db` | file paths, the value → token map, where the detector found values (offsets, no text); 0600, never opened by `serve` |
 | `private/deny.txt` | values to always mask, one per line (masked as `PERSONA`) |
 | `private/allow.txt` | values never to mask, one per line (applies to documents indexed afterwards: `ingest --force`) |
 | `public/public.db` | pseudonymized chunks + full-text index, nothing else |
@@ -96,6 +96,35 @@ Add `"env": {"MCP_SECRET_HOME": "/path/to/data"}` if you moved the data root.
 Try it: *"List my sources, then search for the IBANs and tell me which person each belongs
 to."* Answers come back as tokens (`[IBAN_1]` belongs to `[PERSONA_2]`); searching
 `PERSONA_2` finds every document about that person.
+
+## UI
+
+A macOS app (SwiftUI, macOS 15+) for personal use from this repo: no bundle, no signing. It
+only runs the CLI with `--json` ([docs/cli-json.md](docs/cli-json.md)); it never opens the
+databases or the deny/allow lists, never starts `serve`, never loads a model.
+
+```sh
+swift run --package-path apps/macos MCPSecret
+```
+
+- Drop files and folders on the sidebar (or ⌘O) and watch them index; each document shows its
+  state: indexed, unchanged, error, file missing, changed since indexing.
+- A document opens in two columns: the original in clear, each masked value tinted by type and
+  tagged with its token (legend on top), and what the agent sees. Select a value to light up
+  its token on the right; ⌘[ and ⌘] step through them. One core process keeps the models loaded
+  for the session (about 2.5 GB of memory): it starts with the app, then each document opens in
+  well under a second.
+- Select text that slipped through and choose Always Mask (⇧⌘M). Select a value that should not
+  be masked and choose Don't Mask (⇧⌘U); other documents keep it masked until Re-index All
+  (⇧⌘R).
+- Settings (⌘,): CLI path and data root for the session (`-cliPath`, `-dataRoot` launch
+  arguments preset them), model download, Claude Desktop install and removal.
+
+Document text, values and paths stay in the app's memory: no caches, logs, temporary files or
+restored windows. Italian or English, following the system (`-AppleLanguages "(en)"` forces
+English). Tests: `swift test --package-path apps/macos` (one of them drives the real CLI);
+`SCREENSHOTS=<dir>` in front of it, with `--filter screenshots`, draws the main screens in light
+and dark.
 
 ## Develop
 

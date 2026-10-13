@@ -193,18 +193,46 @@ def show(db: Path, doc_id: str) -> None:
         out({"event": "chunk", "chunk_id": rowid, "text": text}, f"--- chunk {rowid} ---\n{text}\n")
 
 
-def review(root: Path, doc_id: str) -> None:
+def _review(root: Path, doc_id: str) -> dict:
+    """The review event of a document, or the error event saying why there is none."""
     from mcp_secret import ingest
 
     if not (root / "private" / "private.db").exists():
-        fail("no_index", NO_INDEX)
+        return {"event": "error", "error": "no_index", "message": NO_INDEX}
     r = ingest.review(root, doc_id)
     if r is None:
-        fail("no_document", f"no document {doc_id}")
-    state = "missing" if not r["exists"] else "changed" if r["stale"] else "ok"
-    out({"event": "review", **r}, "\n".join([f"{doc_id}\t{state}\t{r['path']}", *(
-        f"{s['start']}\t{s['end']}\t{s['token']}\t{r['text'][s['start']:s['end']]}"
-        for s in r["spans"])]))
+        return {"event": "error", "error": "no_document", "message": f"no document {doc_id}"}
+    return {"event": "review", **r}
+
+
+def _review_text(ev: dict) -> str:
+    if ev["event"] == "error":
+        return ev["message"]
+    state = "missing" if not ev["exists"] else "changed" if ev["stale"] else "ok"
+    return "\n".join([f"{ev['doc_id']}\t{state}\t{ev['path']}", *(
+        f"{s['start']}\t{s['end']}\t{s['token']}\t{ev['text'][s['start']:s['end']]}"
+        for s in ev["spans"])])
+
+
+def review(root: Path, doc_id: str) -> None:
+    """`review <doc_id>`; or `review -`, a worker answering each doc_id read on stdin with one
+    line, until stdin closes: the models load once, before the first request, not on each."""
+    if doc_id != "-":
+        ev = _review(root, doc_id)
+        if ev["event"] == "error":
+            fail(ev["error"], ev["message"])
+        return out(ev, _review_text(ev))
+    from mcp_secret import pii
+
+    pii.detect("warm up")
+    for line in sys.stdin:
+        if not (doc_id := line.strip()):
+            continue
+        try:
+            ev = _review(root, doc_id)
+        except Exception as e:  # noqa: BLE001 - one unreadable file never stops the worker
+            ev = {"event": "error", "error": "failed", "message": type(e).__name__}
+        out(ev, _review_text(ev))
 
 
 def edit(priv: Path, name: str, value: str, add: bool) -> bool:
@@ -280,8 +308,8 @@ def main() -> None:
     sub.add_parser("serve", help="MCP server on stdio, sandboxed, read-only")
     sub.add_parser("list", help="indexed documents, with their paths in clear")
     sub.add_parser("show", help="print what the agent sees of a document").add_argument("doc_id")
-    sub.add_parser("review", help="a document in clear and what ingest masks in it").add_argument(
-        "doc_id")
+    sub.add_parser("review", help="a document in clear and what ingest masks in it; "
+                   "-: a worker reading doc_ids on stdin").add_argument("doc_id")
     for name, what in (("deny", "always"), ("allow", "never")):
         p = sub.add_parser(name, help=f"{what} mask a value ({name}.txt)")
         p.add_argument("action", choices=["add", "remove"])

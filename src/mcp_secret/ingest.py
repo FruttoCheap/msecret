@@ -6,6 +6,7 @@ import email.policy
 import functools
 import hashlib
 import io
+import json
 import re
 import secrets
 import sqlite3
@@ -18,12 +19,16 @@ from mcp_secret import pii
 SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".html", ".htm", ".md", ".png", ".jpg", ".jpeg",
             ".tif", ".tiff", ".bmp", ".eml", ".txt"}
 
+# What the detector found in each document, for review: offsets and types, no text.
+DETECTED = ("CREATE TABLE IF NOT EXISTS detected(doc_id TEXT PRIMARY KEY, text_sha TEXT NOT NULL, "
+            "spans TEXT NOT NULL)")
 # Rollback journals (not WAL) make a transaction over ATTACHed files atomic (super-journal).
-SCHEMA = """
+SCHEMA = f"""
 PRAGMA main.journal_mode = DELETE;
 PRAGMA pub.journal_mode = DELETE;
 CREATE TABLE IF NOT EXISTS docs(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, sha256 TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS entities(type TEXT NOT NULL, value TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL);
+{DETECTED};
 CREATE VIRTUAL TABLE IF NOT EXISTS pub.chunks
     USING fts5(doc_id UNINDEXED, seq UNINDEXED, text, tokenize="unicode61 tokenchars '_'");
 INSERT INTO pub.chunks(chunks, rank) VALUES ('secure-delete', 1);
@@ -294,6 +299,7 @@ def prune(con: sqlite3.Connection, folders: list[Path], emit) -> None:
                 con.execute("BEGIN IMMEDIATE")
                 con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
                 con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
+                con.execute("DELETE FROM detected WHERE doc_id = ?", (doc_id,))
             emit(_doc(doc_id, path, 0, "removed"))
 
 
@@ -316,6 +322,8 @@ def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str],
         con.executemany("INSERT INTO pub.chunks(doc_id, seq, text) VALUES (?, ?, ?)",
                         [(doc_id, i, c) for i, c in enumerate(chunks)])
         con.execute("INSERT OR REPLACE INTO docs VALUES (?, ?, ?)", (doc_id, str(path), sha))
+        con.execute("INSERT OR REPLACE INTO detected VALUES (?, ?, ?)",
+                    (doc_id, _sha(text), json.dumps([[x.start, x.end, x.type] for x in spans])))
     return doc_id, len(chunks)
 
 
@@ -350,14 +358,22 @@ def run(root: Path, paths: list[Path], force: bool = False, emit=_print) -> int:
     return 1 if failed else 0
 
 
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def review(root: Path, doc_id: str) -> dict | None:
     """A document as ingest would publish it now, in clear: its text and the masked spans, with
-    their type and token. Writes nothing: it works on an in-memory copy of private.db, where a
-    value ingest would learn gets the token it would get. None if `doc_id` is unknown."""
+    their type and token. The detector's spans are the ones stored at ingest while the parsed
+    text is the same (detection is most of the time); a changed file, or a parser that now reads
+    it differently, is detected again. Writes nothing: it works on an in-memory copy of
+    private.db, where a value ingest would learn gets the token it would get. None if `doc_id`
+    is unknown."""
     con = sqlite3.connect(":memory:")
     src = sqlite3.connect((root / "private" / "private.db").as_uri() + "?mode=ro", uri=True)
     src.backup(con)
     src.close()
+    con.execute(DETECTED)  # an index from before it existed
     row = con.execute("SELECT path, sha256 FROM docs WHERE id = ?", (doc_id,)).fetchone()
     if not row:
         return None
@@ -367,6 +383,9 @@ def review(root: Path, doc_id: str) -> dict | None:
     if sha:
         allow, _ = lists(con, root / "private")
         out["text"] = text = clean(parse(Path(row[0])))
+        known = con.execute("SELECT spans FROM detected WHERE doc_id = ? AND text_sha = ?",
+                            (doc_id, _sha(text))).fetchone()
+        spans = [pii.Span(*x) for x in json.loads(known[0])] if known else pii.detect(text)
         out["spans"] = [{"start": s, "end": e, "type": t[1:-1].rsplit("_", 1)[0], "token": t}
-                        for s, e, t in masks(con, text, pii.detect(text), allow, {})]
+                        for s, e, t in masks(con, text, spans, allow, {})]
     return out
