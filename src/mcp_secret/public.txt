@@ -1,0 +1,536 @@
+# Well-known public names ingest publishes in clear: context, not personal data.
+# Only when the detector types them ORG or LUOGO, never PERSONA (Messina, Ferrara, Costa are
+# surnames too), and never as a word of a full name in the same document. "Comune di X" and
+# "Tribunale di X" follow X; "S.p.A", ", SpA" read as "S.p.A.". A firm is listed with its
+# legal suffix: "X S.r.l." never follows X. private/deny.txt overrides any line.
+# Out on purpose: names that are also first names (Ginevra, Florence, Sydney, Asia, Italo,
+# Leonardo), towns under ~90,000 people (a quasi-identifier), every small firm.
+
+# Countries and unions
+Italia
+Italy
+Francia
+France
+Germania
+Germany
+Spagna
+Spain
+Svizzera
+Switzerland
+Austria
+Regno Unito
+United Kingdom
+Gran Bretagna
+Great Britain
+Inghilterra
+England
+Scozia
+Scotland
+Irlanda
+Ireland
+Stati Uniti
+Stati Uniti d'America
+United States
+USA
+U.S.A.
+America
+Canada
+Messico
+Mexico
+Brasile
+Brazil
+Argentina
+Cina
+China
+Giappone
+Japan
+India
+Russia
+Ucraina
+Ukraine
+Turchia
+Turkey
+Grecia
+Greece
+Portogallo
+Portugal
+Belgio
+Belgium
+Paesi Bassi
+Olanda
+Netherlands
+Lussemburgo
+Luxembourg
+Danimarca
+Denmark
+Svezia
+Sweden
+Norvegia
+Norway
+Finlandia
+Finland
+Polonia
+Poland
+Repubblica Ceca
+Czech Republic
+Slovacchia
+Slovakia
+Ungheria
+Hungary
+Romania
+Bulgaria
+Croazia
+Croatia
+Slovenia
+Serbia
+Albania
+Malta
+Cipro
+Cyprus
+San Marino
+Città del Vaticano
+Vaticano
+Monaco
+Principato di Monaco
+Marocco
+Morocco
+Tunisia
+Egitto
+Egypt
+Israele
+Israel
+Emirati Arabi Uniti
+United Arab Emirates
+Australia
+Nuova Zelanda
+New Zealand
+Sudafrica
+South Africa
+Corea del Sud
+South Korea
+Europa
+Europe
+Unione Europea
+European Union
+UE
+EU
+
+# Italian regions
+Abruzzo
+Basilicata
+Calabria
+Campania
+Emilia-Romagna
+Emilia Romagna
+Friuli-Venezia Giulia
+Friuli Venezia Giulia
+Lazio
+Liguria
+Lombardia
+Marche
+Molise
+Piemonte
+Puglia
+Sardegna
+Sicilia
+Toscana
+Trentino-Alto Adige
+Trentino Alto Adige
+Alto Adige
+Umbria
+Valle d'Aosta
+Veneto
+
+# Italian cities of about 90,000 people or more
+Roma
+Rome
+Milano
+Milan
+Napoli
+Naples
+Torino
+Turin
+Palermo
+Genova
+Genoa
+Bologna
+Firenze
+Bari
+Catania
+Verona
+Venezia
+Venice
+Messina
+Padova
+Padua
+Trieste
+Parma
+Brescia
+Prato
+Taranto
+Modena
+Reggio Calabria
+Reggio Emilia
+Reggio nell'Emilia
+Perugia
+Ravenna
+Livorno
+Rimini
+Cagliari
+Foggia
+Ferrara
+Salerno
+Latina
+Giugliano in Campania
+Monza
+Sassari
+Bergamo
+Pescara
+Trento
+Forlì
+Siracusa
+Vicenza
+Terni
+Bolzano
+Novara
+Piacenza
+Ancona
+Andria
+Udine
+Arezzo
+Cesena
+Lecce
+Pesaro
+La Spezia
+Barletta
+Alessandria
+
+# Foreign cities
+Londra
+London
+Parigi
+Paris
+Berlino
+Berlin
+Madrid
+Barcellona
+Barcelona
+Lisbona
+Lisbon
+Bruxelles
+Brussels
+Amsterdam
+Vienna
+Zurigo
+Zurich
+Zürich
+Geneva
+Genève
+Monaco di Baviera
+Munich
+München
+Francoforte
+Frankfurt
+Amburgo
+Hamburg
+Praga
+Prague
+Varsavia
+Warsaw
+Budapest
+Atene
+Athens
+Stoccolma
+Stockholm
+Copenaghen
+Copenhagen
+Oslo
+Helsinki
+Dublino
+Dublin
+Edimburgo
+Edinburgh
+Mosca
+Moscow
+Istanbul
+New York
+Los Angeles
+San Francisco
+Chicago
+Boston
+Washington
+Toronto
+Tokyo
+Pechino
+Beijing
+Shanghai
+Hong Kong
+Singapore
+Dubai
+
+# Public bodies
+INPS
+INAIL
+Agenzia delle Entrate
+Agenzia delle Entrate-Riscossione
+Agenzia delle Entrate Riscossione
+Equitalia
+Agenzia delle Dogane
+Agenzia delle Dogane e dei Monopoli
+Agenzia del Territorio
+Catasto
+Catasto Fabbricati
+Catasto Terreni
+Conservatoria dei Registri Immobiliari
+Guardia di Finanza
+Carabinieri
+Arma dei Carabinieri
+Polizia di Stato
+Polizia Locale
+Polizia Municipale
+Polizia Stradale
+Vigili del Fuoco
+Protezione Civile
+Presidenza del Consiglio dei Ministri
+Governo
+Parlamento
+Camera dei Deputati
+Senato
+Senato della Repubblica
+Ministero dell'Interno
+Ministero della Salute
+Ministero dell'Economia e delle Finanze
+MEF
+Ministero del Lavoro e delle Politiche Sociali
+Ministero della Giustizia
+Ministero dell'Istruzione
+Ministero dell'Istruzione e del Merito
+MIUR
+Ministero dell'Università e della Ricerca
+Ministero degli Affari Esteri
+Farnesina
+Ministero delle Infrastrutture e dei Trasporti
+Ministero della Difesa
+Ministero dello Sviluppo Economico
+MISE
+Ministero delle Imprese e del Made in Italy
+Corte Costituzionale
+Corte di Cassazione
+Corte Suprema di Cassazione
+Cassazione
+Consiglio di Stato
+Corte dei Conti
+TAR
+Tribunale Amministrativo Regionale
+Garante per la Protezione dei Dati Personali
+Garante Privacy
+AGCM
+AGCOM
+Consob
+IVASS
+COVIP
+ANAC
+ARERA
+ISTAT
+ACI
+Automobile Club d'Italia
+PRA
+Pubblico Registro Automobilistico
+Motorizzazione Civile
+Servizio Sanitario Nazionale
+SSN
+Camera di Commercio
+Registro delle Imprese
+AgID
+PagoPA
+Commissione Europea
+European Commission
+Parlamento Europeo
+European Parliament
+Banca Centrale Europea
+BCE
+European Central Bank
+ECB
+Nazioni Unite
+United Nations
+ONU
+NATO
+OMS
+
+# Banks and payments
+Banca d'Italia
+Bank of Italy
+Cassa Depositi e Prestiti
+UniCredit
+Intesa Sanpaolo
+Banca Intesa
+Banca Intesa Sanpaolo
+Banco BPM
+BPER
+BPER Banca
+Banca Sella
+Banca Mediolanum
+Mediolanum
+Mediobanca
+Monte dei Paschi di Siena
+Banca Monte dei Paschi di Siena
+MPS
+Crédit Agricole
+Credit Agricole
+Crédit Agricole Italia
+BNL
+Banca Nazionale del Lavoro
+BNP Paribas
+Credem
+Credito Emiliano
+Banca Popolare di Sondrio
+Banca Ifis
+Banca Generali
+FinecoBank
+Fineco
+Widiba
+Banca Widiba
+ING
+ING Bank
+Deutsche Bank
+Banca Etica
+CheBanca!
+Illimity
+Poste Italiane
+BancoPosta
+Postepay
+PayPal
+Satispay
+Nexi
+Revolut
+N26
+Visa
+Mastercard
+American Express
+UniCredit S.p.A.
+Intesa Sanpaolo S.p.A.
+Banco BPM S.p.A.
+BPER Banca S.p.A.
+Banca Sella S.p.A.
+Banca Mediolanum S.p.A.
+Mediobanca S.p.A.
+Banca Monte dei Paschi di Siena S.p.A.
+Banca Nazionale del Lavoro S.p.A.
+Credito Emiliano S.p.A.
+FinecoBank S.p.A.
+Banca Ifis S.p.A.
+Banca Generali S.p.A.
+Poste Italiane S.p.A.
+Nexi S.p.A.
+Cassa Depositi e Prestiti S.p.A.
+
+# Large companies and services
+Amazon
+Google
+Apple
+Microsoft
+Meta
+Facebook
+Instagram
+WhatsApp
+LinkedIn
+YouTube
+Netflix
+Spotify
+Booking.com
+Airbnb
+Uber
+eBay
+Zalando
+IKEA
+Enel
+Enel Energia
+Eni
+Eni Plenitude
+Plenitude
+Edison
+A2A
+Iren
+Acea
+Sorgenia
+TIM
+Telecom Italia
+Vodafone
+WindTre
+Wind Tre
+Iliad
+Fastweb
+Tiscali
+Sky
+Sky Italia
+DAZN
+Mediaset
+RAI
+Trenitalia
+Ferrovie dello Stato
+ITA Airways
+Alitalia
+Ryanair
+easyJet
+Lufthansa
+Autostrade per l'Italia
+Telepass
+ANAS
+Esselunga
+Coop
+Conad
+Carrefour
+Lidl
+Eurospin
+Fiat
+Stellantis
+Ferrari
+Pirelli
+Generali
+Assicurazioni Generali
+Allianz
+UnipolSai
+Unipol
+AXA
+Reale Mutua
+Aruba
+Enel S.p.A.
+Enel Energia S.p.A.
+Eni S.p.A.
+Eni Plenitude S.p.A.
+Edison S.p.A.
+A2A S.p.A.
+Iren S.p.A.
+Acea S.p.A.
+TIM S.p.A.
+Telecom Italia S.p.A.
+Vodafone Italia S.p.A.
+Wind Tre S.p.A.
+Fastweb S.p.A.
+Iliad Italia S.p.A.
+Sky Italia S.p.A.
+Trenitalia S.p.A.
+Ferrovie dello Stato Italiane S.p.A.
+ITA Airways S.p.A.
+Autostrade per l'Italia S.p.A.
+Telepass S.p.A.
+ANAS S.p.A.
+Esselunga S.p.A.
+Pirelli & C. S.p.A.
+Assicurazioni Generali S.p.A.
+UnipolSai Assicurazioni S.p.A.
+Unipol Gruppo S.p.A.
+Allianz S.p.A.
+Reale Mutua di Assicurazioni S.p.A.
+Stellantis S.p.A.
+Ferrari S.p.A.
+Aruba S.p.A.
+
+# Contract roles
+Parte Prima
+Parte Seconda
+Parte Terza
+Parte Venditrice
+Parte Acquirente
+Parte Locatrice
+Parte Conduttrice

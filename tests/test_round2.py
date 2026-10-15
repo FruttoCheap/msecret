@@ -404,3 +404,19 @@ def test_a_title_is_not_part_of_the_name(tmp_path):
     out = published(tmp_path, {"a.txt": "Il locatore Avv. Concetta Savorgnan firma.",
                                "b.txt": "Firmato: Concetta Savorgnan"})
     assert set(re.findall(r"\[PERSONA_\d+\]", out)) == {"[PERSONA_1]"}, out
+
+
+# --- context: what stays in clear --------------------------------------------------------------
+
+
+def test_public_names_and_common_nouns_stay_in_clear(tmp_path):
+    t = ("Il sig. Mario Messina, residente a Milano, ha ricevuto da UniCredit S.p.A. un bonifico per "
+         "l'Agenzia delle Entrate. Messina ha poi scritto al Comune di Pontecuti e al Tribunale di "
+         "Roma. Il lastrico solare è parte comune del condominio, come da catasto fabbricati.\n")
+    out = published(tmp_path, {"a.txt": t})
+    for v in ["Milano", "UniCredit S.p.A.", "Agenzia delle Entrate", "Roma", "lastrico solare",
+              "condominio", "catasto fabbricati"]:
+        assert v in out, (v, out)
+    assert leaks(out, "Messina", "Pontecuti") == []  # a surname that is a city too, a small town
+    assert "Roma" not in published(tmp_path, deny="Roma\n")  # deny.txt beats public.txt
+    assert not ingest._public("ORG", "ferrara s.r.l.", ingest.PUBLIC, {})  # a firm, not the city

@@ -372,9 +372,17 @@ def _untitle(text: str, s: Span) -> Span | None:
     return Span(m.end(), s.end, s.type) if m.end() < s.end else None
 
 
+def _proper(text: str, s: Span) -> bool:
+    """A model ORG or LUOGO is a proper name: a capital letter in it. "catasto fabbricati",
+    "lastrico solare", "condominio" are not, and as entities they would be masked everywhere.
+    ponytail: an org written all lowercase ("lavoro da iliad") is lost; PERSONA keeps them."""
+    return s.type not in ("ORG", "LUOGO") or not text[s.start : s.end].islower()
+
+
 def detect(text: str) -> list[Span]:
     """Return sorted, non-overlapping spans. Never logs or returns anything but offsets/types."""
-    cands = [(0, s) for s in _rules(text)] + [(1, u) for s in _ner(text) if (u := _untitle(text, s))]
+    cands = [(0, s) for s in _rules(text)]
+    cands += [(1, u) for s in _ner(text) if (u := _untitle(text, s)) and _proper(text, u)]
     cands += [(1, s) for s in _parts(text, [s for _, s in cands])]
     # Overlapping spans of the same type are one value: take the union (a rule's partial
     # address plus the model's full one must not leave the rest exposed).

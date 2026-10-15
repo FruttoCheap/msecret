@@ -20,7 +20,7 @@ markdown tables. `python fixtures/generate.py` also writes one DOCX (textutil), 
   ORG precision is low partly by construction: banks, "Parte Prima" and the like are masked but not
   annotated.
 
-## Held-out: seed 2, 30 docs, 26,894 chars, 211 ms per 1000 chars
+## Held-out: seed 2, 30 docs, 26,894 chars, 234 ms per 1000 chars
 
 | type | gold | recall | precision |
 | --- | --- | --- | --- |
@@ -30,17 +30,31 @@ markdown tables. `python fixtures/generate.py` also writes one DOCX (textutil), 
 | EMAIL | 43 | 1.000 | 1.000 |
 | IBAN | 24 | 1.000 | 1.000 |
 | INDIRIZZO | 48 | 0.979 | 1.000 |
-| LUOGO | 57 | 1.000 | 0.960 |
-| ORG | 38 | 0.947 | 0.578 |
+| LUOGO | 57 | 1.000 | 1.000 |
+| ORG | 38 | 0.947 | 0.623 |
 | PERSONA | 136 | 1.000 | 0.993 |
 | PIVA | 14 | 1.000 | 1.000 |
 | TARGA | 8 | 1.000 | 1.000 |
 | TELEFONO | 47 | 1.000 | 1.000 |
 
-Tuning set (seed 1, 60 docs, 56,005 chars, 212 ms per 1000 chars): PERSONA 1.000 / 1.000,
-ORG 0.948 / 0.552, LUOGO 0.977 / 0.945, every rule type 1.000 recall (TELEFONO precision 0.974).
+Tuning set (seed 1, 60 docs, 56,005 chars, 244 ms per 1000 chars): PERSONA 1.000 / 1.000,
+ORG 0.948 / 0.600, LUOGO 0.977 / 1.000, every rule type 1.000 recall (TELEFONO precision 0.974).
 PERSONA reached 1.000 once a full name's words are masked wherever else the same document
 capitalizes them; before that it was 0.956 held-out and 0.962 tuning.
+
+A model ORG or LUOGO with no capital letter is dropped ("catasto fabbricati", "lastrico
+solare", "condominio"): precision held-out ORG 0.578 → 0.623, LUOGO 0.960 → 1.000; tuning ORG
+0.552 → 0.600, LUOGO 0.945 → 1.000; recall unchanged everywhere. What is left of ORG's noise is
+capitalized and public (banks, "Parte Prima").
+
+### Published in clear: `public.txt`
+
+Ingest, not `detect()`, leaves the ORG and LUOGO spans of `src/mcp_secret/public.txt` in
+clear, so the table above does not move. Held-out it releases 49 of 517 detected spans
+(30 ORG, 19 LUOGO), tuning 102 of 1,175. Of those, the gold values are only big cities the
+generator writes as PII (`BIG_CITIES`: Milano, Bari, Palermo...), 21 held-out and 46 tuning: a
+policy choice, not a miss. No PERSONA, no small town, no firm: a first version that stripped
+legal suffixes released "Ferrara S.r.l." as the city and was dropped.
 
 ## Model choice (seed 1, 30 docs, same rules, labels person/organization/location/address)
 

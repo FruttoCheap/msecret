@@ -147,8 +147,9 @@ What the agent sees: the published chunks, in order.
 
 The document in clear as ingest reads it now, and what ingest masks in it. It re-parses the
 file with the ingest pipeline (parse, normalization, detection, `deny.txt`, `allow.txt`,
-masking) and writes nothing. Detection, most of the time, is skipped while the parsed text is
-the one indexed: the spans found then are reused (`ingest --force` refreshes them). One line.
+`public.txt`, masking) and writes nothing. Detection, most of the time, is skipped while the
+parsed text is the one indexed: the spans found then are reused (`ingest --force` refreshes
+them). One line.
 
 ```json
 {"event": "review", "doc_id": "3f9c0a1b2c3d4e5f", "path": "/Users/me/docs/contratto.txt", "exists": true, "stale": false, "text": "Tra Mario Rossi (CF RSSMRA80A01H501U) e...", "spans": [{"start": 4, "end": 15, "type": "PERSONA", "token": "[PERSONA_1]"}, {"start": 20, "end": 36, "type": "CF", "token": "[CF_1]"}]}

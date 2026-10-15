@@ -183,21 +183,24 @@ def _apply(text: str, cands: list[tuple[int, int, str]]) -> str:
     return "".join(out) + text[end:]
 
 
-def masks(con: sqlite3.Connection, text: str, spans: list, allow: set[str],
+def masks(con: sqlite3.Connection, text: str, spans: list, allow: set[str], public: set[str],
           new: dict) -> list[list]:
     """What becomes a [TYPE_N] token in `text`, as _merge()d [start, end, token]: detected spans
     plus every known value (sweep). A one-word name that is a word of a full name in this text
     ("Rossi" after "Mario Rossi") takes that name's token and is no entity: swept through every
-    document, the surname Costa would mask coasts."""
+    document, the surname Costa would mask coasts. A public ORG or LUOGO stays in clear, unless
+    it is such a word ("Mario Messina", then "Messina")."""
     keep = [(s, v) for s in spans
             if norm(v := text[s.start:s.end]) not in allow and not _NOISE.fullmatch(v)]
     full = {}  # ponytail: two full names sharing a word, the lone word takes the last one's token
     for s, v in keep:
         if s.type == "PERSONA" and len(words := norm(v).split()) > 1:
             full.update(dict.fromkeys(words, _token(con, s.type, v, new)))
+    keep = [(s, v) for s, v in keep if not _public(s.type, norm(v), public, full)]
     cands = [(s.start, s.end, (s.type == "PERSONA" and full.get(norm(v))) or _token(con, s.type, v, new))
              for s, v in keep]
-    known = {v: t for v, t in con.execute("SELECT value, token FROM entities") if v not in allow}
+    known = {v: t for ty, v, t in con.execute("SELECT type, value, token FROM entities")
+             if v not in allow and not _public(ty, v, public, full)}
     if known:
         cands += [(m.start(), m.end(), _lookup(known, m)) for m in _hits(_pattern(known), text)]
     return _merge(cands)
@@ -261,12 +264,39 @@ def files(paths: list[Path]):
             yield p
 
 
-def lists(con: sqlite3.Connection, priv: Path) -> tuple[set[str], dict[str, str]]:
-    """allow.txt and deny.txt as ingest applies them: the values never to mask, and every deny
-    value learned as an entity (value -> token). A value in both is masked."""
+# "Comune di Milano", "Tribunale di Roma": the body of a public place is public too. No legal
+# suffix is stripped: "Ferrara S.r.l." is a firm named after a surname, not the city.
+_BODY = re.compile(
+    r"^(?:comune|provincia|città metropolitana|regione|tribunale|prefettura|questura|procura"
+    r"(?: della repubblica)?(?: presso il tribunale)?|corte d'appello|camera di commercio"
+    r"|università(?: degli studi)?|politecnico|asl|ats|asst|ausl)(?: d(?:i|el|ella|elle|egli))? ")
+
+
+def _canon(value: str) -> str:
+    """A norm()ed value spelled as in public.txt: "'" for "’", "S.p.A"/", SpA" as " s.p.a."."""
+    return re.sub(r",? s\.?p\.?a\.?$", " s.p.a.", value.replace("’", "'"))
+
+
+PUBLIC = frozenset(_canon(norm(s)) for s in _lines(Path(__file__).with_name("public.txt"))
+                   if not s.startswith("#"))
+
+
+def _public(type_: str, value: str, public: set[str], full: dict) -> bool:
+    """`value` (norm()ed) is a public name of public.txt, typed ORG or LUOGO, and no word of a
+    full name in this text."""
+    v = _canon(value)
+    return type_ in ("ORG", "LUOGO") and value not in full and (v in public or _BODY.sub("", v) in public)
+
+
+def lists(con: sqlite3.Connection, priv: Path) -> tuple[set[str], set[str], dict[str, str]]:
+    """allow.txt, public.txt and deny.txt as ingest applies them: the values never to mask, the
+    public names left in clear, and every deny value learned as an entity (value -> token). A
+    value in deny is masked; so is a public name inside one ("Comune di Milano" masks Milano)."""
     # ponytail: deny.txt values are typed PERSONA, add a "TYPE:" prefix if others need it
     deny = {norm(v): _token(con, "PERSONA", v, {}) for v in _lines(priv / "deny.txt")}
-    return {norm(v) for v in _lines(priv / "allow.txt")} - deny.keys(), deny
+    denied = {_canon(d) for d in deny}
+    public = PUBLIC - denied - {_BODY.sub("", d) for d in denied}
+    return {norm(v) for v in _lines(priv / "allow.txt")} - deny.keys(), public, deny
 
 
 def digest(path: Path) -> str | None:
@@ -315,7 +345,7 @@ def prune(con: sqlite3.Connection, folders: list[Path], emit) -> None:
             emit(_doc(doc_id, path, 0, "removed"))
 
 
-def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str],
+def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str], public: set[str],
                 force: bool) -> tuple[str, int | None]:
     """(doc_id, chunk count), the count None if the file is unchanged and not `force`d."""
     sha = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -328,7 +358,7 @@ def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str],
     new: dict[str, str] = {}
     with con:  # one transaction over private.db + public.db
         con.execute("BEGIN IMMEDIATE")
-        chunks = chunk(_apply(text, masks(con, text, spans, allow, new)))
+        chunks = chunk(_apply(text, masks(con, text, spans, allow, public, new)))
         con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
         sweep(con, new)
         con.executemany("INSERT INTO pub.chunks(doc_id, seq, text) VALUES (?, ?, ?)",
@@ -357,14 +387,14 @@ def run(root: Path, paths: list[Path], force: bool = False, emit=_print) -> int:
     emit({"event": "start", "files": len(todo)})
     with con:  # deny.txt: learn new values, scrub every deny value from chunks already published
         con.execute("BEGIN IMMEDIATE")  # (also one that was allowed when they were published)
-        allow, deny = lists(con, priv)
+        allow, public, deny = lists(con, priv)
         sweep(con, deny)
     prune(con, [p.resolve() for p in paths if p.is_dir()], emit)
     counts = dict(con.execute("SELECT doc_id, count(*) FROM pub.chunks GROUP BY doc_id"))
     failed = 0
     for path in todo:
         try:
-            doc_id, n = ingest_file(con, path, allow, force)
+            doc_id, n = ingest_file(con, path, allow, public, force)
             if n is not None:
                 counts[doc_id] = n
             emit(_doc(doc_id, path, counts.get(doc_id, 0), "unchanged" if n is None else "indexed"))
@@ -399,11 +429,11 @@ def review(root: Path, doc_id: str) -> dict | None:
     out = {"doc_id": doc_id, "path": row[0], "exists": sha is not None,
            "stale": sha not in (None, row[1]), "text": "", "spans": []}
     if sha:
-        allow, _ = lists(con, root / "private")
+        allow, public, _ = lists(con, root / "private")
         out["text"] = text = clean(parse(Path(row[0])))
         known = con.execute("SELECT spans FROM detected WHERE doc_id = ? AND text_sha = ?",
                             (doc_id, _sha(text))).fetchone()
         spans = [pii.Span(*x) for x in json.loads(known[0])] if known else pii.detect(text)
         out["spans"] = [{"start": s, "end": e, "type": t[1:-1].rsplit("_", 1)[0], "token": t}
-                        for s, e, t in masks(con, text, spans, allow, {})]
+                        for s, e, t in masks(con, text, spans, allow, public, {})]
     return out

@@ -56,6 +56,7 @@ The data root is `~/Library/Application Support/mcp-secret` (override with `MCP_
 | `private/private.db` | file paths, the value → token map, where the detector found values (offsets, no text), categories added or removed by hand; 0600, never opened by `serve` |
 | `private/deny.txt` | values to always mask, one per line (masked as `PERSONA`) |
 | `private/allow.txt` | values never to mask, one per line (applies to documents indexed afterwards: `ingest --force`) |
+| `src/mcp_secret/public.txt` (built in) | well-known public names left in clear when detected as `ORG` or `LUOGO`: banks, public bodies, large companies, countries, regions, cities of ~90,000+ people; `deny.txt` overrides it, `ingest --force` applies a change |
 | `private/categories.txt` | keyword rules of the automatic categories, `Name: term, prefix*, a phrase` per line |
 | `private/drive.json` | Google Drive: OAuth client, refresh token (read-only access to the whole Drive), folders; 0600 |
 | `private/drive/` | the Drive folders' files, in clear, as last synced |
