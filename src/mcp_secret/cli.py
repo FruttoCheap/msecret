@@ -108,6 +108,7 @@ def _jsonl():
         stream.write(json.dumps(ev) + "\n")  # ASCII: anything else as \u escapes
         stream.flush()
 
+    emit.fd = stream.fileno()  # the real stdout, for a command that execs another (drive sync)
     return emit
 
 
@@ -171,18 +172,89 @@ def status(root: Path) -> None:
 
 
 def list_docs(root: Path) -> None:
+    from mcp_secret import categories
     from mcp_secret.ingest import digest
 
     priv, pub = root / "private" / "private.db", root / "public" / "public.db"
     if not (priv.exists() and pub.exists()):
         return
-    n = dict(_ro(pub).execute("SELECT doc_id, count(*) FROM chunks GROUP BY doc_id"))
-    for doc_id, path, sha in _ro(priv).execute("SELECT id, path, sha256 FROM docs ORDER BY path"):
+    priv_con, pub_con = _ro(priv), _ro(pub)
+    n = dict(pub_con.execute("SELECT doc_id, count(*) FROM chunks GROUP BY doc_id"))
+    cats = categories.of_docs(priv_con, pub_con, root / "private")
+    for doc_id, path, sha in priv_con.execute("SELECT id, path, sha256 FROM docs ORDER BY path"):
         now = digest(Path(path))  # ponytail: hashes every file per call; keep size+mtime if slow
         ev = {"event": "doc", "doc_id": doc_id, "path": path, "chunks": n.get(doc_id, 0),
-              "exists": now is not None, "stale": now not in (None, sha)}
+              "exists": now is not None, "stale": now not in (None, sha),
+              "categories": cats.get(doc_id, [])}
         state = "missing" if now is None else "changed" if now != sha else "ok"
-        out(ev, f"{doc_id}\t{ev['chunks']} chunks\t{state}\t{path}")
+        out(ev, "\t".join([doc_id, f"{ev['chunks']} chunks", state, path, *ev["categories"]]))
+
+
+def _index(root: Path, write: bool = False) -> tuple[sqlite3.Connection, sqlite3.Connection]:
+    """private.db (read-only unless `write`) and public.db (read-only)."""
+    priv, pub = root / "private" / "private.db", root / "public" / "public.db"
+    if not (priv.exists() and pub.exists()):
+        fail("no_index", NO_INDEX)
+    return sqlite3.connect(priv) if write else _ro(priv), _ro(pub)
+
+
+def cat(root: Path, action: str, doc_ids: list[str], name: str) -> None:
+    """Add a category to documents by hand, or take one away (also an automatic one, for good).
+    One event for each document, in order; an unknown id changes none."""
+    from mcp_secret import categories
+    from mcp_secret.ingest import CATS
+
+    if not (name := categories.name(name)):
+        fail("bad_value", "empty category")
+    priv_con, pub_con = _index(root, write=True)
+    before = categories.of_docs(priv_con, pub_con, root / "private")
+    for doc_id in doc_ids:
+        if doc_id not in before:
+            fail("no_document", f"no document {doc_id}")
+    add = action == "add"
+    with priv_con:
+        priv_con.execute(CATS)  # an index from before categories
+        for doc_id in doc_ids:
+            if add or name in before[doc_id]:  # nothing to take away: no decision to remember
+                priv_con.execute("INSERT OR REPLACE INTO cats VALUES (?, ?, ?)", (doc_id, name, not add))
+    for doc_id in doc_ids:
+        out({"event": "cat", "action": action, "changed": (name in before[doc_id]) != add})
+
+
+def forget(root: Path, doc_ids: list[str]) -> None:
+    """Take documents out of the index, for good: the files stay where they are. One `removed`
+    doc event for each; an id that is not indexed is skipped."""
+    from mcp_secret import ingest
+
+    _index(root)
+    con = ingest.connect(root)
+    for doc_id in dict.fromkeys(doc_ids):
+        if row := con.execute("SELECT path FROM docs WHERE id = ?", (doc_id,)).fetchone():
+            ingest.forget(con, doc_id)
+            ev = ingest._doc(doc_id, row[0], 0, "removed")
+            out(ev, f"{doc_id}\tremoved\t{row[0]}")
+
+
+def rules(priv: Path, name: str | None, terms: list[str]) -> None:
+    """Keyword rules of the automatic categories; with `name`, set its terms first (none: drop it)."""
+    from mcp_secret import categories
+
+    if name is not None:
+        if not (name := categories.name(name)) or ":" in name:
+            fail("bad_value", "empty category or one with ':'")
+        terms = list(dict.fromkeys(t for a in terms for t in map(categories.name, a.split(",")) if t))
+        _private(priv)
+        _replace(priv / "categories.txt", categories.set_rule(priv, name, terms), 0o600)
+    for n, ts in categories.rules(priv).items():
+        out({"event": "rule", "name": n, "terms": ts}, f"{n}\t{', '.join(ts)}")
+
+
+def tokens(root: Path, types: list[str], limit: int) -> None:
+    from mcp_secret import categories
+
+    priv_con, pub_con = _index(root)
+    for ev in categories.tokens(priv_con, pub_con, set(types), max(1, limit)):
+        out(ev, "\t".join([ev["token"], str(len(ev["doc_ids"])), ev["value"] or ""]))
 
 
 def show(db: Path, doc_id: str) -> None:
@@ -327,6 +399,56 @@ def desktop(root: Path, install: bool, uninstall: bool) -> None:
     out(ev, "\n".join(f"{k}\t{v}" for k, v in list(ev.items())[1:]))
 
 
+def drive_cmd(priv: Path, action: str, arg: str | None) -> None:
+    """The Google account and the folders mirrored into private/drive/ (private/drive.json,
+    0600). `sync` downloads, then becomes `ingest private/drive`, offline and sandboxed, on the
+    same stdout; the other actions end with the `drive` event."""
+    from mcp_secret import drive
+
+    _private(priv)
+    p = priv / "drive.json"
+    conf = json.loads(p.read_text()) if p.exists() else {}
+    folders = conf.setdefault("folders", [])
+
+    def save() -> None:
+        _replace(p, json.dumps(conf, indent=2) + "\n", 0o600)
+
+    try:
+        if action == "login":
+            if arg:
+                conf["client"] = drive.client(Path(arg))
+                save()
+            if "client" not in conf:
+                fail("no_client", "no OAuth client yet: `drive login <client_secret.json>`")
+            conf["refresh_token"] = drive.login(conf["client"])
+        elif action == "logout":
+            drive.revoke(conf.pop("refresh_token", None))
+        elif action == "add":
+            f = drive.folder(conf, arg)
+            if all(x["id"] != f["id"] for x in folders):
+                folders.append(f)
+        elif action == "remove":  # its copy and its documents go at the next sync
+            conf["folders"] = [x for x in folders if x["id"] != drive.folder_id(arg)]
+            if conf["folders"] == folders:
+                fail("no_folder", f"no folder {arg} in the list")
+        elif action == "sync":
+            base = priv / "drive"
+            drive.sync(conf, base, _json or drive._print)
+            base.mkdir(exist_ok=True)  # no folders yet: ingest still needs one to read
+            if _json:
+                os.dup2(_json.fd, 1)
+            os.execv(sys.executable, [sys.executable, "-m", "mcp_secret.cli",
+                                      *(["--json"] if _json else []), "ingest", str(base)])
+    except drive.Error as e:
+        fail(*e.args)
+    if action != "status":
+        save()
+    ev = {"event": "drive", "client": "client" in conf, "connected": "refresh_token" in conf,
+          "folders": [{"id": f["id"], "name": f["name"]} for f in conf["folders"]]}
+    out(ev, "\n".join([f"client\t{ev['client']}", f"connected\t{ev['connected']}",
+                       *(f"{f['id']}\t{f['name']}" for f in ev["folders"])]))
+
+
 def main() -> None:
     global _json
     ap = argparse.ArgumentParser(prog="mcp-secret", description=__doc__)
@@ -348,13 +470,36 @@ def main() -> None:
         p = sub.add_parser(name, help=f"{what} mask a value ({name}.txt)")
         p.add_argument("action", choices=["add", "remove"])
         p.add_argument("value")
+    p = sub.add_parser("cat", help="add or remove a category of documents")
+    p.add_argument("action", choices=["add", "remove"])
+    p.add_argument("doc_ids", nargs="+", metavar="doc_id")
+    p.add_argument("name")
+    sub.add_parser("forget", help="take documents out of the index (the files stay)"
+                   ).add_argument("doc_ids", nargs="+", metavar="doc_id")
+    p = sub.add_parser("rules", help="keyword rules of the automatic categories (categories.txt)")
+    p.add_argument("--set", metavar="NAME", help="set the rule's terms (none: remove it)")
+    p.add_argument("terms", nargs="*", help="words, prefix*, or phrases; a document with any of "
+                   "them in what the agent sees gets the category")
+    p = sub.add_parser("tokens", help="the tokens in the most documents, values in clear")
+    p.add_argument("--type", action="append", default=[], help="only this type (repeatable)")
+    p.add_argument("--limit", type=int, default=300)
     sub.add_parser("export", help="write the pseudonymized documents to a folder an agent works "
                    "in (Claude Cowork)").add_argument("dir", type=Path)
     p = sub.add_parser("desktop-config", help="show, add or remove mcp-secret in Claude Desktop")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--install", action="store_true")
     g.add_argument("--uninstall", action="store_true")
+    p = sub.add_parser("drive", help="Google Drive folders mirrored into private/drive/ and "
+                       "ingested (login, add, remove, sync use the network)")
+    p.add_argument("action", nargs="?", default="status",
+                   choices=["status", "login", "logout", "add", "remove", "sync"])
+    p.add_argument("arg", nargs="?", help="login: client_secret.json (the first time); "
+                   "add, remove: a folder link or id")
     args = ap.parse_args()
+    if args.cmd == "rules" and args.terms and args.set is None:
+        ap.error("rules: terms need --set NAME")
+    if args.cmd == "drive" and args.action in ("add", "remove") and not args.arg:
+        ap.error(f"drive {args.action}: a folder link or id")
     root = home()
     os.environ["MCP_SECRET_HOME"] = str(root)  # absolute for the re-exec (serve chdirs to /)
     priv, db = root / "private", root / "public" / "public.db"
@@ -426,8 +571,18 @@ def main() -> None:
             if args.action == "add":  # the latest decision wins
                 edit(priv, "allow" if args.cmd == "deny" else "deny", value, False)
             out({"event": args.cmd, "action": args.action, "changed": changed})
+        elif args.cmd == "cat":
+            cat(root, args.action, args.doc_ids, args.name)
+        elif args.cmd == "forget":
+            forget(root, args.doc_ids)
+        elif args.cmd == "rules":
+            rules(priv, args.set, args.terms)
+        elif args.cmd == "tokens":
+            tokens(root, args.type, args.limit)
         elif args.cmd == "export":
             export(root, dest)
+        elif args.cmd == "drive":
+            drive_cmd(priv, args.action, args.arg)
         else:
             desktop(root, args.install, args.uninstall)
     except Exception as e:

@@ -68,6 +68,24 @@ struct CLI: Sendable, Equatable {
         return all
     }
 
+    /// What the agent sees of a document, as `export` writes it: its chunks a blank line apart.
+    func anonymized(_ docId: String) async throws -> String {
+        var chunks: [Chunk] = []
+        do {
+            chunks = try await events("show", docId).compactMap(\.chunk)
+        } catch let e as CLIError where e.error == "no_document" {}  // an empty file publishes no chunk
+        try Task.checkCancellation()  // a cancelled stream ends early: half a document
+        return chunks.map(\.text).joined(separator: "\n\n") + "\n"
+    }
+
+    /// `<docId>.md` in `folder`: the file's URL.
+    @discardableResult
+    func export(_ docId: String, to folder: URL) async throws -> URL {
+        let file = folder.appending(path: "\(docId).md")
+        try await anonymized(docId).write(to: file, atomically: true, encoding: .utf8)
+        return file
+    }
+
     /// A pipe's lines as they come. Not FileHandle.bytes: it reads every handle on one shared
     /// actor, so a command with nothing to say yet (an ingest between files) would stall the rest.
     static func lines(_ pipe: Pipe) -> AsyncStream<String> {
@@ -170,7 +188,11 @@ enum Event: Equatable, Sendable {
     case review(Review)
     case status(Status)
     case desktop(Desktop)
+    case rule(Rule)
+    case token(Token)
     case exported(Exported)
+    case drive(Drive)
+    case file(path: String)
     case edited(changed: Bool)
     case error(CLIError)
 
@@ -183,7 +205,7 @@ enum Event: Equatable, Sendable {
 }
 
 extension Event: Decodable {
-    private enum Key: String, CodingKey { case event, files, steps, step, name, changed }
+    private enum Key: String, CodingKey { case event, files, steps, step, name, changed, path }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
@@ -197,8 +219,12 @@ extension Event: Decodable {
         case "review": self = .review(try Review(from: decoder))
         case "status": self = .status(try Status(from: decoder))
         case "desktop": self = .desktop(try Desktop(from: decoder))
+        case "rule": self = .rule(try Rule(from: decoder))
+        case "token": self = .token(try Token(from: decoder))
         case "export": self = .exported(try Exported(from: decoder))
-        case "deny", "allow": self = .edited(changed: try c.decode(Bool.self, forKey: .changed))
+        case "drive": self = .drive(try Drive(from: decoder))
+        case "file": self = .file(path: try c.decode(String.self, forKey: .path))
+        case "deny", "allow", "cat": self = .edited(changed: try c.decode(Bool.self, forKey: .changed))
         case "error": self = .error(try CLIError(from: decoder))
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .event, in: c, debugDescription: "unknown event \(other)")
@@ -206,7 +232,7 @@ extension Event: Decodable {
     }
 }
 
-/// A document: a `doc` line of `ingest` (status, error) or of `list` (exists, stale).
+/// A document: a `doc` line of `ingest` (status, error) or of `list` (exists, stale, categories).
 struct Doc: Decodable, Equatable, Sendable {
     var docId: String?
     var path: String
@@ -215,9 +241,24 @@ struct Doc: Decodable, Equatable, Sendable {
     var error: String?
     var exists: Bool?
     var stale: Bool?
+    var categories: [String]?
 }
 
-/// An `export`: the folder written, the files in its `pseudonymized/`, the stale ones deleted.
+/// A keyword rule of the automatic categories.
+struct Rule: Decodable, Equatable, Sendable {
+    var name: String
+    var terms: [String]
+}
+
+/// A token with its value in clear and the documents it is published in.
+struct Token: Decodable, Equatable, Sendable {
+    var token: String
+    var type: String
+    var value: String?
+    var docIds: [String]
+}
+
+/// An `export`: the folder written, the files in its `docs/`, the stale ones deleted.
 struct Exported: Decodable, Equatable, Sendable {
     var dir: String
     var docs: Int
@@ -252,6 +293,18 @@ struct Status: Decodable, Equatable, Sendable {
     var index: Bool
     var docs: Int
     var chunks: Int
+}
+
+/// Google Drive: an OAuth client given, the account connected, the folders mirrored.
+struct Drive: Decodable, Equatable, Sendable {
+    var client: Bool
+    var connected: Bool
+    var folders: [Folder]
+
+    struct Folder: Decodable, Equatable, Sendable, Identifiable {
+        var id: String
+        var name: String
+    }
 }
 
 struct Desktop: Decodable, Equatable, Sendable {

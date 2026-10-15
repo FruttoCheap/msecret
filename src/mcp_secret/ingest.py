@@ -22,6 +22,10 @@ SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".html", ".htm", ".md", ".png", "
 # What the detector found in each document, for review: offsets and types, no text.
 DETECTED = ("CREATE TABLE IF NOT EXISTS detected(doc_id TEXT PRIMARY KEY, text_sha TEXT NOT NULL, "
             "spans TEXT NOT NULL)")
+# Categories decided by hand (categories.py): removed = 0 adds one, 1 takes it away for good (a
+# rule or the folder that gives it again does not bring it back).
+CATS = ("CREATE TABLE IF NOT EXISTS cats(doc_id TEXT NOT NULL, name TEXT NOT NULL, "
+        "removed INTEGER NOT NULL, PRIMARY KEY(doc_id, name))")
 # Rollback journals (not WAL) make a transaction over ATTACHed files atomic (super-journal).
 SCHEMA = f"""
 PRAGMA main.journal_mode = DELETE;
@@ -29,6 +33,7 @@ PRAGMA pub.journal_mode = DELETE;
 CREATE TABLE IF NOT EXISTS docs(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, sha256 TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS entities(type TEXT NOT NULL, value TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL);
 {DETECTED};
+{CATS};
 CREATE VIRTUAL TABLE IF NOT EXISTS pub.chunks
     USING fts5(doc_id UNINDEXED, seq UNINDEXED, text, tokenize="unicode61 tokenchars '_'");
 INSERT INTO pub.chunks(chunks, rank) VALUES ('secure-delete', 1);
@@ -290,16 +295,23 @@ def _print(ev: dict) -> None:
         print(f"{ev['doc_id']}\t{what}\t{ev['path']}", flush=True)
 
 
+def forget(con: sqlite3.Connection, doc_id: str) -> None:
+    """Take a document out of both databases: its chunks, its record, what was detected in it,
+    its categories. The entities stay: a value keeps its token in the documents that remain."""
+    with con:
+        con.execute("BEGIN IMMEDIATE")
+        con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
+        con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
+        con.execute("DELETE FROM detected WHERE doc_id = ?", (doc_id,))
+        con.execute("DELETE FROM cats WHERE doc_id = ?", (doc_id,))
+
+
 def prune(con: sqlite3.Connection, folders: list[Path], emit) -> None:
     """Forget documents whose file is gone from an ingested folder (deleted or moved)."""
     for doc_id, path in con.execute("SELECT id, path FROM docs").fetchall():
         p = Path(path)
         if not p.exists() and any(d in p.parents for d in folders):
-            with con:
-                con.execute("BEGIN IMMEDIATE")
-                con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
-                con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
-                con.execute("DELETE FROM detected WHERE doc_id = ?", (doc_id,))
+            forget(con, doc_id)
             emit(_doc(doc_id, path, 0, "removed"))
 
 
@@ -327,14 +339,20 @@ def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str],
     return doc_id, len(chunks)
 
 
+def connect(root: Path) -> sqlite3.Connection:
+    """private.db with public.db attached as `pub`, the schema in place, deletes wiped."""
+    con = sqlite3.connect(root / "private" / "private.db", isolation_level=None)
+    con.execute("ATTACH ? AS pub", (str(root / "public" / "public.db"),))
+    con.execute("PRAGMA secure_delete = ON")  # no schema: applies to both files
+    con.executescript(SCHEMA)
+    return con
+
+
 def run(root: Path, paths: list[Path], force: bool = False, emit=_print) -> int:
     """Ingest files and folders; `emit` gets the events of docs/cli-json.md (start, doc, done)."""
     priv = root / "private"
     (root / "public").mkdir(exist_ok=True)
-    con = sqlite3.connect(priv / "private.db", isolation_level=None)
-    con.execute("ATTACH ? AS pub", (str(root / "public" / "public.db"),))
-    con.execute("PRAGMA secure_delete = ON")  # no schema: applies to both files
-    con.executescript(SCHEMA)
+    con = connect(root)
     todo = list(files(paths))
     emit({"event": "start", "files": len(todo)})
     with con:  # deny.txt: learn new values, scrub every deny value from chunks already published

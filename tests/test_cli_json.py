@@ -192,6 +192,91 @@ def test_review_reuses_what_ingest_detected(tmp_path, monkeypatch):
         ingest.review(root, doc_id)
 
 
+def test_categories_and_tokens(tmp_path):
+    root, docs = tmp_path / "data", tmp_path / "docs"
+    env = {**os.environ, "MCP_SECRET_HOME": str(root)}
+    assert run(env, "tokens", code=1)[0]["error"] == "no_index"
+    for folder, name, body in (("Clienti", "a.txt", CONTRACT), ("Verbali", "b.txt", MINUTES)):
+        (docs / folder).mkdir(parents=True)
+        (docs / folder / name).write_text(body)
+    run(env, "ingest", str(docs))
+    a, b = run(env, "list")
+    assert (a["categories"], b["categories"]) == (["Clienti"], ["Verbali"])  # the file's folder
+
+    # rules: matched on what the agent sees; other lines of categories.txt are kept
+    rules = root / "private" / "categories.txt"
+    rules.write_text("# mine\nAltro: x\n")
+    pub = (root / "public" / "public.db").read_bytes()
+    assert run(env, "rules", "--set", " Pagamenti ", "pagament*, iban", "pagament*") == [
+        {"event": "rule", "name": "Altro", "terms": ["x"]},
+        {"event": "rule", "name": "Pagamenti", "terms": ["pagament*", "iban"]}]
+    assert rules.read_text() == "# mine\nAltro: x\nPagamenti: pagament*, iban\n"
+    assert rules.stat().st_mode & 0o777 == 0o600
+    assert run(env, "rules", "--set", "a:b", code=1)[0]["error"] == "bad_value"
+    assert [d["categories"] for d in run(env, "list")] == [["Clienti", "Pagamenti"], ["Verbali"]]
+
+    # by hand: add one; take one away, automatic too, for good (a re-index does not restore it)
+    assert run(env, "cat", "add", b["doc_id"], "Urgente")[0] == {"event": "cat", "action": "add",
+                                                                  "changed": True}
+    assert run(env, "cat", "add", b["doc_id"], "Urgente")[0]["changed"] is False
+    assert run(env, "cat", "remove", a["doc_id"], "Pagamenti")[0]["changed"] is True
+    assert run(env, "cat", "remove", a["doc_id"], "Nessuna")[0]["changed"] is False
+    assert run(env, "cat", "add", "f" * 16, "X", code=1)[0]["error"] == "no_document"
+    assert run(env, "cat", "add", a["doc_id"], " ", code=1)[0]["error"] == "bad_value"
+    assert (root / "public" / "public.db").read_bytes() == pub  # categories live in private/ only
+    run(env, "ingest", "--force", str(docs))
+    assert [d["categories"] for d in run(env, "list")] == [["Clienti"], ["Urgente", "Verbali"]]
+    assert run(env, "rules", "--set", "Pagamenti") == [{"event": "rule", "name": "Altro", "terms": ["x"]}]
+
+    # tokens: in the most documents first, value in clear, the documents; filtered by type
+    toks = run(env, "tokens")
+    assert all(t["event"] == "token" and t["value"] and t["doc_ids"] for t in toks)
+    rossi = next(t for t in toks if t["value"] == "mario rossi")
+    assert rossi["type"] == "PERSONA" and rossi["doc_ids"] == [a["doc_id"]]
+    assert {t["type"] for t in run(env, "tokens", "--type", "IBAN")} == {"IBAN"}
+    assert len(run(env, "tokens", "--limit", "1")) == 1
+
+    # a document gone takes its decisions along
+    (docs / "Verbali" / "b.txt").unlink()
+    run(env, "ingest", str(docs))
+    db = sqlite3.connect(root / "private" / "private.db")
+    assert db.execute("SELECT doc_id, name, removed FROM cats").fetchall() == [
+        (a["doc_id"], "Pagamenti", 1)]
+
+
+def test_forget_and_cat_many(tmp_path):
+    root, docs = tmp_path / "data", tmp_path / "docs"
+    env = {**os.environ, "MCP_SECRET_HOME": str(root)}
+    assert run(env, "forget", "f" * 16, code=1)[0]["error"] == "no_index"
+    docs.mkdir()
+    (docs / "a.txt").write_text(CONTRACT)
+    (docs / "b.txt").write_text(MINUTES)
+    run(env, "ingest", str(docs))
+    a, b = run(env, "list")
+    both = [a["doc_id"], b["doc_id"]]
+
+    # as the app calls them: `--`, then the ids, a name that starts with a dash
+    # one category for several documents; an unknown id among them changes none
+    assert [e["changed"] for e in run(env, "cat", "add", "--", *both, "-Urgente")] == [True, True]
+    assert run(env, "cat", "add", "--", both[0], "f" * 16, "Altra", code=1)[0]["error"] == "no_document"
+    assert run(env, "cat", "remove", "--", *both, "-Urgente")[1]["changed"] is True
+    assert [d["categories"] for d in run(env, "list")] == [["docs"], ["docs"]]
+
+    # forget: gone from the index, public.db wiped of its text, the file untouched
+    run(env, "cat", "add", "--", both[0], "-Urgente")
+    pub = root / "public" / "public.db"
+    assert b"Pagamento su IBAN" in pub.read_bytes()
+    gone = run(env, "forget", "--", both[0], "f" * 16, both[0])  # the unknown id and the repeat: skipped
+    assert gone == [{"event": "doc", "doc_id": both[0], "path": str(docs / "a.txt"), "chunks": 0,
+                     "status": "removed", "error": None}]
+    assert run(env, "show", both[0], code=1)[0]["error"] == "no_document"
+    assert [d["doc_id"] for d in run(env, "list")] == [both[1]] and text(env, both[1])
+    assert b"Pagamento su IBAN" not in pub.read_bytes() and (docs / "a.txt").exists()
+    assert sqlite3.connect(root / "private" / "private.db").execute(
+        "SELECT count(*) FROM cats WHERE doc_id = ?", (both[0],)).fetchone() == (0,)
+    assert [e["status"] for e in run(env, "ingest", str(docs / "a.txt"))[1:-1]] == ["indexed"]
+
+
 def test_export(tmp_path):
     root, docs, work = tmp_path / "data", tmp_path / "docs", tmp_path / "work"
     env = {**os.environ, "MCP_SECRET_HOME": str(root)}

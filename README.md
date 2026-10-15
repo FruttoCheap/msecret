@@ -21,7 +21,7 @@ macOS, [uv](https://docs.astral.sh/uv/):
 ```sh
 git clone <this repo> mcp_secret && cd mcp_secret
 uv sync
-uv run mcp-secret models     # one-time model download, the only command that uses the network
+uv run mcp-secret models     # one-time model download; with `drive`, the only network use
 ```
 
 ## Use
@@ -33,7 +33,14 @@ uv run mcp-secret show 3f9c0a1b2c3d4e5f         # exactly what the agent sees
 uv run mcp-secret list                          # indexed files: changed or missing ones flagged
 uv run mcp-secret review 3f9c0a1b2c3d4e5f       # the text in clear, what is masked, which token
 uv run mcp-secret deny add "Mario Rossi"        # always mask it (`allow add`: never), then ingest
+uv run mcp-secret rules --set Fatture "fattur*" imponibile   # an automatic category
+uv run mcp-secret cat add 3f9c0a1b2c3d4e5f Urgente           # one by hand (`remove`: for good)
+uv run mcp-secret forget 3f9c0a1b2c3d4e5f       # out of the index (the file stays); several ids work too
+uv run mcp-secret tokens --type PERSONA         # the tokens in the most documents, values in clear
 ```
+
+Categories are for you, not the agent: a document gets its folder's name, every rule with a
+term in its published text, and what you add by hand; nothing of them reaches `public.db`.
 
 `ingest` and `list` print each file's full path, and `review` the document's text, in clear, to
 your terminal: run them yourself, not through an agent whose output leaves the machine (a cloud
@@ -46,9 +53,12 @@ The data root is `~/Library/Application Support/mcp-secret` (override with `MCP_
 
 | File | Holds |
 | --- | --- |
-| `private/private.db` | file paths, the value → token map, where the detector found values (offsets, no text); 0600, never opened by `serve` |
+| `private/private.db` | file paths, the value → token map, where the detector found values (offsets, no text), categories added or removed by hand; 0600, never opened by `serve` |
 | `private/deny.txt` | values to always mask, one per line (masked as `PERSONA`) |
 | `private/allow.txt` | values never to mask, one per line (applies to documents indexed afterwards: `ingest --force`) |
+| `private/categories.txt` | keyword rules of the automatic categories, `Name: term, prefix*, a phrase` per line |
+| `private/drive.json` | Google Drive: OAuth client, refresh token (read-only access to the whole Drive), folders; 0600 |
+| `private/drive/` | the Drive folders' files, in clear, as last synced |
 | `public/public.db` | pseudonymized chunks + full-text index, nothing else |
 
 `show` reveals a missed value? `deny add` it (or add a line to `deny.txt`) and run `ingest`
@@ -56,6 +66,32 @@ again: it is masked in new documents and scrubbed from those already indexed.
 
 Every command takes `--json` (before the command) and then prints one JSON object per line:
 the contract a UI builds on, in [docs/cli-json.md](docs/cli-json.md).
+
+## Google Drive
+
+Folders you pick are copied into `private/drive/` and indexed from there like local files;
+Google Docs, Sheets and Slides come as DOCX, XLSX and PPTX, each folder's name becomes a
+category. Only `drive login`, `add` and `sync` use the network, and they never parse a
+document: the ingest that follows does, offline and sandboxed. `serve` cannot read
+`private/`, so neither the copies nor the token.
+
+Once, an OAuth client of your own (no Google review needed for an Internal app):
+
+1. [Google Cloud console](https://console.cloud.google.com): a project of your Workspace
+   organization, with the Google Drive API enabled.
+2. Google Auth Platform: audience **Internal** (an External app in testing must log in again
+   every 7 days); data access: `.../auth/drive.readonly`.
+3. Clients → Create client → **Desktop app** → download the JSON.
+
+```sh
+uv run mcp-secret drive login ~/Downloads/client_secret_….json    # consent in the browser
+uv run mcp-secret drive add "https://drive.google.com/drive/folders/1AbC…"
+uv run mcp-secret drive sync         # download what changed, then ingest it; re-run any time
+uv run mcp-secret drive remove 1AbC… # its copy and its documents go at the next sync
+```
+
+Not mirrored: shortcuts, Forms, Drawings, files ingest cannot read; Docs over 10 MB once
+exported fail (a `file` error).
 
 ## Residual risks
 
@@ -136,10 +172,18 @@ swift run --package-path apps/macos MCPSecret
 - Select text that slipped through and choose Always Mask (⇧⌘M). Select a value that should not
   be masked and choose Don't Mask (⇧⌘U); other documents keep it masked until Re-index All
   (⇧⌘R).
+- Categories: the sidebar filters by one; right-click a document to add or remove one by hand.
+  Each document also gets its folder's name and the category of every keyword rule (Settings)
+  with a term in what the agent sees.
+- Graph (toolbar): categories and tokens, linked by the documents they share, tokens colored
+  by type. Hover a node for its value, click it for its documents and links (a document opens
+  from there); filter by type and by shared documents per link, pinch or zoom, drag to pan.
 - Export for Cowork (toolbar): choose a folder, get the pseudonymized documents in it (`export`); it is
   refreshed after every ingest for the rest of the session.
 - Settings (⌘,): CLI path and data root for the session (`-cliPath`, `-dataRoot` launch
-  arguments preset them), model download, Claude Desktop install and removal.
+  arguments preset them), model download, keyword rules, Google Drive (connect with the OAuth
+  client file, add or remove folders, sync), Claude Desktop install and removal.
+- Sync Google Drive (toolbar, once a folder is added): download what changed, then index it.
 
 Document text, values and paths stay in the app's memory: no caches, logs, temporary files or
 restored windows. Italian or English, following the system (`-AppleLanguages "(en)"` forces

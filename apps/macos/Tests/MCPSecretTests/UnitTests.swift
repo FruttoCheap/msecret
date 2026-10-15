@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Foundation
 import Testing
 @testable import MCPSecret
@@ -62,6 +63,15 @@ let TEXT = "Contratto tra Mario Rossi (CF RSSMRA80A01H501U) e la ditta Alfa.\n\n
 let REVIEW = #"{"event": "review", "doc_id": "aaaaaaaaaaaaaaaa", "path": "/docs/a.txt", "exists": true, "stale": false, "text": "Contratto tra Mario Rossi (CF RSSMRA80A01H501U) e la ditta Alfa.\n\nPagamento entro marzo.\n", "spans": [{"start": 14, "end": 25, "type": "PERSONA", "token": "[PERSONA_1]"}, {"start": 30, "end": 46, "type": "CF", "token": "[CF_1]"}, {"start": 59, "end": 63, "type": "ORG", "token": "[ORG_1]"}]}"#
 let SHOW = #"{"event": "chunk", "chunk_id": 7, "text": "Contratto tra [PERSONA_1] (CF [CF_1]) e la ditta [ORG_1].\n\nPagamento entro marzo.\n"}"#
 let DESKTOP = #"{"event": "desktop", "config": "/Users/me/Library/Application Support/Claude/claude_desktop_config.json", "configured": true, "command": "/repo/.venv/bin/mcp-secret", "command_ok": true, "last_log": "2026-10-13T11:31:28Z"}"#
+let DRIVE = #"{"event": "drive", "client": true, "connected": true, "folders": [{"id": "1AbCdEfGhIjK", "name": "Clienti"}]}"#
+// `drive sync`: its own start and file events, then those of the ingest it becomes
+let DRIVE_SYNC = """
+{"event": "start", "files": 1}
+{"event": "file", "path": "/data/private/drive/Clienti/a.docx", "status": "downloaded", "error": null}
+{"event": "start", "files": 1}
+{"event": "doc", "doc_id": "aaaaaaaaaaaaaaaa", "path": "/data/private/drive/Clienti/a.docx", "chunks": 1, "status": "indexed", "error": null}
+{"event": "done"}
+"""
 
 @Suite struct Decoding {
     @Test func everyEvent() throws {
@@ -83,6 +93,9 @@ let DESKTOP = #"{"event": "desktop", "config": "/Users/me/Library/Application Su
         #expect(review.value(review.spans[0]) == "Mario Rossi" && review.value(review.spans[2]) == "Alfa")
         let desktop = try #require(try Event.decode(DESKTOP).desktop)
         #expect(desktop.commandOk && desktop.lastLog == Date(timeIntervalSince1970: 1_791_891_088))
+        #expect(try Event.decode(DRIVE).drive == Drive(client: true, connected: true,
+                                                       folders: [.init(id: "1AbCdEfGhIjK", name: "Clienti")]))
+        #expect(try Event.decode(DRIVE_SYNC.components(separatedBy: "\n")[1]) == .file(path: "/data/private/drive/Clienti/a.docx"))
     }
 
     @Test func errors() throws {
@@ -230,6 +243,21 @@ let DESKTOP = #"{"event": "desktop", "config": "/Users/me/Library/Application Su
         #expect(core.calls == ["--json desktop-config", "--json desktop-config --install"])
     }
 
+    @Test func addingADriveFolderSyncsIt() async throws {
+        let core = try Recorded(["drive": (DRIVE_SYNC, 0), "status": (STATUS, 0), "list": (LIST, 0)])
+        let app = AppModel(cliPath: core.path)
+        await app.changeDrive("add", "https://drive.google.com/drive/folders/1AbCdEfGhIjK")
+        #expect(app.problem == nil && app.job == nil)
+        #expect(app.outcome["/data/private/drive/Clienti/a.docx"]?.status == "indexed")
+        #expect(core.calls == ["--json drive add -- https://drive.google.com/drive/folders/1AbCdEfGhIjK",
+                               "--json drive sync", "--json status", "--json list"])
+        let offline = try Recorded(["drive": (#"{"event": "error", "error": "not_connected", "message": "x"}"#, 1)])
+        let other = AppModel(cliPath: offline.path)
+        await other.changeDrive("remove", "1AbCdEfGhIjK")
+        #expect(other.problem == CLIError(error: "not_connected", message: "").text)
+        #expect(offline.calls == ["--json drive remove -- 1AbCdEfGhIjK"])  // no sync after a failure
+    }
+
     @Test func errorsReachTheUserAndStopTheAction() async throws {
         let core = try Recorded(["deny": (#"{"event": "error", "error": "bad_value", "message": "empty value"}"#, 1)])
         let app = AppModel(cliPath: core.path)
@@ -315,4 +343,209 @@ let DESKTOP = #"{"event": "desktop", "config": "/Users/me/Library/Application Su
     let it = try #require(Bundle.module.path(forResource: "it", ofType: "lproj").flatMap(Bundle.init(path:)))
     #expect(it.localizedString(forKey: "What the agent sees", value: nil, table: nil) == "Cosa vede l'agente")
     #expect(it.localizedString(forKey: "Tax code", value: nil, table: nil) == "Codice fiscale")
+}
+
+let TOKENS = """
+{"event": "token", "token": "[PERSONA_1]", "type": "PERSONA", "value": "mario rossi", "doc_ids": ["aaaaaaaaaaaaaaaa", "cccccccccccccccc"]}
+{"event": "token", "token": "[IBAN_1]", "type": "IBAN", "value": "it60x0542811101000000123456", "doc_ids": ["aaaaaaaaaaaaaaaa"]}
+{"event": "token", "token": "[ORG_1]", "type": "ORG", "value": null, "doc_ids": ["bbbbbbbbbbbbbbbb"]}
+"""
+let CATEGORIZED = """
+{"event": "doc", "doc_id": "aaaaaaaaaaaaaaaa", "path": "/docs/Clienti/a.txt", "chunks": 1, "exists": true, "stale": false, "categories": ["Clienti", "Fatture"]}
+{"event": "doc", "doc_id": "bbbbbbbbbbbbbbbb", "path": "/docs/Verbali/b.txt", "chunks": 2, "exists": true, "stale": false, "categories": ["Verbali"]}
+{"event": "doc", "doc_id": "cccccccccccccccc", "path": "/docs/Clienti/c.txt", "chunks": 1, "exists": true, "stale": false, "categories": ["Clienti"]}
+"""
+
+@Suite struct Categories {
+    func events(_ lines: String) -> [Event] { lines.split(separator: "\n").compactMap { try? Event.decode(String($0)) } }
+
+    @Test func decoding() throws {
+        #expect(try Event.decode(#"{"event": "cat", "action": "add", "changed": true}"#) == .edited(changed: true))
+        #expect(try Event.decode(#"{"event": "rule", "name": "Fatture", "terms": ["fattur*", "iva"]}"#)
+            == .rule(Rule(name: "Fatture", terms: ["fattur*", "iva"])))
+        let tokens = events(TOKENS).compactMap(\.token)
+        #expect(tokens.count == 3 && tokens[0].docIds.count == 2 && tokens[2].value == nil)
+        #expect(events(CATEGORIZED).compactMap(\.doc).map(\.categories) == [["Clienti", "Fatture"], ["Verbali"], ["Clienti"]])
+        #expect(try Event.decode(LIST.components(separatedBy: "\n")[0]).doc?.categories == nil)  // before categories
+    }
+
+    @Test func graphLinksByDocumentsShared() {
+        let g = Graph(tokens: events(TOKENS).compactMap(\.token), docs: events(CATEGORIZED).compactMap(\.doc), minWeight: 1)
+        #expect(g.nodes.map(\.label) == ["Clienti", "Fatture", "Verbali", "[PERSONA_1]", "[IBAN_1]", "[ORG_1]"])
+        #expect(g.nodes.map(\.isCategory) == [true, true, true, false, false, false])
+        func weight(_ a: String, _ b: String) -> Int? {
+            let (i, j) = (g.nodes.firstIndex { $0.label == a }!, g.nodes.firstIndex { $0.label == b }!)
+            return g.edges.first { Set([$0.a, $0.b]) == Set([i, j]) }?.weight
+        }
+        #expect(weight("Clienti", "[PERSONA_1]") == 2 && weight("Fatture", "[PERSONA_1]") == 1)
+        #expect(weight("[PERSONA_1]", "[IBAN_1]") == 1 && weight("Verbali", "[ORG_1]") == 1)
+        #expect(weight("Clienti", "Fatture") == nil && weight("[ORG_1]", "[PERSONA_1]") == nil)
+        #expect(g.neighbors(3).map(\.weight) == [2, 1, 1])  // [PERSONA_1]: Clienti first
+        let strict = Graph(tokens: events(TOKENS).compactMap(\.token), docs: events(CATEGORIZED).compactMap(\.doc), minWeight: 2)
+        #expect(strict.edges.count == 1)
+    }
+
+    @Test func layoutFitsTheSquareAndPullsLinksTogether() {
+        let g = Graph(tokens: events(TOKENS).compactMap(\.token), docs: events(CATEGORIZED).compactMap(\.doc), minWeight: 1)
+        let p = Graph.layout(g)
+        #expect(p.count == g.nodes.count && p == Graph.layout(g))  // deterministic
+        #expect(p.allSatisfy { (0...1).contains($0.x) && (0...1).contains($0.y) })
+        func dist(_ a: Int, _ b: Int) -> Double { hypot(p[a].x - p[b].x, p[a].y - p[b].y) }
+        #expect(dist(2, 5) < dist(2, 3))  // Verbali sits by its token, away from the other group
+        #expect(Graph.layout(Graph()) == [] && Graph.layout(Graph(tokens: [], docs: [], minWeight: 1)) == [])
+    }
+
+    @MainActor @Test func byHandAndByRule() async throws {
+        let core = try Recorded(["status": (STATUS, 0), "list": (CATEGORIZED, 0),
+                                 "cat": (#"{"event": "cat", "action": "add", "changed": true}"#, 0),
+                                 "rules": (#"{"event": "rule", "name": "Fatture", "terms": ["fattur*", "iva"]}"#, 0)])
+        let app = AppModel(cliPath: core.path)
+        app.category = "Gone"
+        await app.refresh()
+        #expect(app.categories == ["Clienti", "Fatture", "Verbali"] && app.category == nil)
+        #expect(app.rows.map(\.categories) == [["Clienti", "Fatture"], ["Verbali"], ["Clienti"]])
+        await app.setCategory(["bbbbbbbbbbbbbbbb"], "-Urgente", add: true)
+        await app.setRule("Fatture", terms: ["fattur*", " iva"])
+        #expect(app.rules == [Rule(name: "Fatture", terms: ["fattur*", "iva"])] && app.problem == nil)
+        #expect(core.calls.filter { !$0.hasSuffix("status") && !$0.hasSuffix("list") } == [
+            "--json cat add -- bbbbbbbbbbbbbbbb -Urgente", "--json rules --set=Fatture -- fattur*  iva"])
+        #expect(core.calls.filter { $0.hasSuffix("list") }.count == 3)  // each change refreshes
+    }
+
+    @MainActor @Test func graphModelLoadsTokensAndKeepsTheSelection() async throws {
+        let core = try Recorded(["status": (STATUS, 0), "list": (CATEGORIZED, 0), "tokens": (TOKENS, 0)])
+        let app = AppModel(cliPath: core.path)
+        let graph = GraphModel()
+        await graph.load(app)
+        #expect(graph.graph.nodes.isEmpty && core.calls.isEmpty)  // nothing indexed: no call
+        await app.refresh()
+        await graph.load(app)
+        #expect(graph.graph.nodes.count == 6 && graph.points.count == 6)
+        graph.selected = 4
+        graph.types = ["IBAN", "PERSONA"]
+        await graph.load(app)
+        #expect(graph.selectedNode?.label == "[IBAN_1]")
+        #expect(core.calls.last == "--json tokens --type IBAN --type PERSONA")
+        graph.showValues = true
+        #expect(graph.label(graph.graph.nodes[4]) == "it60x0542811101000000123456")
+        #expect(graph.label(graph.graph.nodes[5]) == "[ORG_1]")  // no value: the token
+    }
+}
+
+@MainActor @Suite struct Selection {
+    let a = try! Event.decode(LIST.components(separatedBy: "\n")[0]).doc!
+
+    @Test func actionsReachEveryDocumentOfTheSelection() async throws {
+        let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0), "ingest": (INGEST, 0), "forget": ("", 0),
+                                 "cat": (#"{"event": "cat", "action": "add", "changed": true}"#, 0)])
+        let app = AppModel(cliPath: core.path)
+        await app.refresh()
+        let picked = app.docs(["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "/docs/z.pdf"])  // a failed file has no document
+        #expect(picked.map(\.path) == ["/docs/a.txt", "/docs/b.txt"])
+        await app.reindex(picked)  // b's file is gone: left out
+        await app.setCategory(["aaaaaaaaaaaaaaaa", "cccccccccccccccc"], "Urgente", add: true)
+        await app.forget(["aaaaaaaaaaaaaaaa", "cccccccccccccccc"])
+        await app.setCategory([], "Urgente", add: false)
+        await app.forget([])  // nothing selected: no call
+        #expect(app.problem == nil)
+        #expect(core.calls.filter { !$0.hasSuffix("status") && !$0.hasSuffix("list") } == [
+            "--json ingest --force -- /docs/a.txt",
+            "--json cat add -- aaaaaaaaaaaaaaaa cccccccccccccccc Urgente",
+            "--json forget -- aaaaaaaaaaaaaaaa cccccccccccccccc"])
+    }
+
+    @Test func aForgottenDocumentLeavesNoRowAndLeavesTheCoworkFolder() async throws {
+        let rest = LIST.components(separatedBy: "\n").dropFirst().joined(separator: "\n")
+        let core = try Recorded(["status": (STATUS, 0), "list": (rest, 0), "forget": ("", 0),
+                                 "export": (#"{"event": "export", "dir": "/tmp/w", "docs": 2, "removed": 1}"#, 0)])
+        let app = AppModel(cliPath: core.path)
+        app.docs = [a]
+        app.outcome[a.path] = Doc(docId: a.docId, path: a.path, chunks: 1, status: "indexed", error: nil)
+        app.exportDir = "/tmp/w"
+        await app.forget([a.docId!])
+        #expect(app.rows.map(\.path) == ["/docs/b.txt", "/docs/c.txt"])  // not back as a new row
+        #expect(core.calls.last == "--json export -- /tmp/w")
+    }
+
+    @Test func exportWritesWhatTheAgentSeesAndNothingElse() async throws {
+        let core = try Recorded(["show": (SHOW, 0)])
+        let out = core.dir.appending(path: "out")
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        let app = AppModel(cliPath: core.path)
+        await app.export(["aaaaaaaaaaaaaaaa", "cccccccccccccccc"], to: out.path)
+        #expect(app.job == nil && app.problem == nil)
+        let files = try FileManager.default.contentsOfDirectory(atPath: out.path).sorted()
+        #expect(files == ["aaaaaaaaaaaaaaaa.md", "cccccccccccccccc.md"])  // no README, no folder
+        let chunk = try #require(try Event.decode(SHOW).chunk)
+        #expect(try String(contentsOf: out.appending(path: files[0]), encoding: .utf8) == chunk.text + "\n")
+        #expect(core.calls == ["--json show aaaaaaaaaaaaaaaa", "--json show cccccccccccccccc"])
+    }
+
+    @Test func anEmptyDocumentIsAnEmptyFileAndACancelledReadWritesNothing() async throws {
+        let core = try Recorded(["show": (#"{"event": "error", "error": "no_document", "message": "no document x"}"#, 1)])
+        #expect(try await core.cli.anonymized("aaaaaaaaaaaaaaaa") == "\n")
+        let task = Task { try await core.cli.export("aaaaaaaaaaaaaaaa", to: core.dir) }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(!FileManager.default.fileExists(atPath: core.dir.appending(path: "aaaaaaaaaaaaaaaa.md").path))
+    }
+}
+
+/// What the sidebar hands AppKit when its rows are dragged: for each row, the file name and text
+/// of its pasteboard writer (`public.file-url`), and whether the table lets a drag start there.
+@MainActor func dragged(from app: AppModel, selecting ids: Set<String>) async throws -> [(name: String, text: String)] {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 1180, height: 760), styleMask: [.titled],
+                          backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false  // ARC owns it
+    window.contentView = NSHostingView(rootView: MainView(selection: ids).environment(app))
+    window.orderFrontRegardless()
+    defer { window.close() }
+    func outline(_ v: NSView) -> NSOutlineView? { (v as? NSOutlineView) ?? v.subviews.lazy.compactMap(outline).first }
+    var list: NSOutlineView?
+    for _ in 0..<50 where list?.numberOfRows != app.rows.count || app.rows.isEmpty {  // it fills in a moment after the window shows
+        try await Task.sleep(for: .milliseconds(100))
+        list = outline(window.contentView!)
+    }
+    let table = try #require(list)
+    #expect(table.selectedRowIndexes.count == ids.count)
+    return try (0..<table.numberOfRows).map { row in
+        let rect = table.rect(ofRow: row)
+        #expect(table.canDragRows(with: IndexSet(integer: row), at: NSPoint(x: rect.midX, y: rect.midY)))
+        let writer = try #require(table.dataSource?.outlineView?(table, pasteboardWriterForItem: table.item(atRow: row) as Any))
+        #expect(writer.writableTypes(for: NSPasteboard(name: .drag)).map(\.rawValue) == ["net.daringfireball.markdown", "public.file-url"])
+        let t0 = ContinuousClock.now
+        let data = try #require(writer.pasteboardPropertyList(forType: .fileURL) as? Data)
+        print("TIMING row", row, ContinuousClock.now - t0)
+        let file = try #require(URL(dataRepresentation: data, relativeTo: nil))
+        return (file.lastPathComponent, try String(contentsOf: file, encoding: .utf8))
+    }
+}
+
+@MainActor @Suite struct DragPayload {
+    @Test func everyRowOffersItsAnonymizedFile() async throws {
+        let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0), "show": (SHOW, 0)])
+        let app = AppModel(cliPath: core.path)
+        await app.refresh()
+        let files = try await dragged(from: app, selecting: ["aaaaaaaaaaaaaaaa", "cccccccccccccccc"])
+        let chunk = try #require(try Event.decode(SHOW).chunk)
+        #expect(files.map(\.name) == ["aaaaaaaaaaaaaaaa.md", "bbbbbbbbbbbbbbbb.md", "cccccccccccccccc.md"])
+        #expect(files.allSatisfy { $0.text == chunk.text + "\n" })
+    }
+
+    /// The real core, as the app runs it.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: CLI.defaultPath)))
+    func realCoreDocumentsDragOut() async throws {
+        let docs = try fixtures()
+        let app = AppModel(cliPath: CLI.defaultPath, dataRoot: docs.deletingLastPathComponent().appending(path: "data").path)
+        await app.ingest([docs.path])
+        let ids = app.rows.compactMap(\.docId)
+        #expect(ids.count == 3)
+        let files = try await dragged(from: app, selecting: Set(ids))
+        #expect(files.map(\.name) == ids.map { "\($0).md" })
+        for (file, id) in zip(files, ids) {
+            let shown = try await app.cli.events("show", id).compactMap(\.chunk).map(\.text).joined(separator: "\n\n")
+            #expect(!shown.isEmpty && file.text == shown + "\n")
+        }
+    }
 }

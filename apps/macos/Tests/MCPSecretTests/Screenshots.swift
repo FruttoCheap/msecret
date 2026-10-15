@@ -15,6 +15,16 @@ func screenshots() async throws {
     let app = AppModel(cliPath: CLI.defaultPath, dataRoot: root.appending(path: "data").path)
     await app.ingest([docs.path])
     let id = try #require(app.rows.first?.docId)
+    // the graph: every generated text document, in one folder per kind (contratto, fattura...)
+    let kinds = root.appending(path: "kinds"), fm = FileManager.default
+    for f in try fm.contentsOfDirectory(atPath: repo.appending(path: "fixtures/out").path) where f.hasSuffix(".txt") {
+        let kind = kinds.appending(path: String(f.dropFirst(3).dropLast(4)))
+        try fm.createDirectory(at: kind, withIntermediateDirectories: true)
+        try fm.copyItem(at: repo.appending(path: "fixtures/out/\(f)"), to: kind.appending(path: f))
+    }
+    let graphed = AppModel(cliPath: CLI.defaultPath, dataRoot: root.appending(path: "graph").path)
+    await graphed.ingest([kinds.path])
+    await graphed.setRule("Pagamenti", terms: ["iban", "pagament*"])
     _ = NSApplication.shared
     for dark in [false, true] {
         let mode = dark ? "dark" : "light"
@@ -27,14 +37,16 @@ func screenshots() async throws {
         await indexing.value
         await snap(MainView().environment(empty), size: NSSize(width: 1180, height: 760), dark: dark,
                    to: out.appending(path: "guide-\(mode).png"))
-        await snap(MainView(selection: id).environment(app), size: NSSize(width: 1380, height: 820), dark: dark,
+        await snap(MainView(selection: [id]).environment(app), size: NSSize(width: 1380, height: 820), dark: dark,
                    to: out.appending(path: "document-\(mode).png")) { window in
             // click into the third masked value of the original, as a user would
             let original = try #require(window.contentView.flatMap { textViews(in: $0).first })
             let tag = (original.string as NSString).range(of: "[PERSONA_")
             original.setSelectedRange(NSRange(location: tag.location - 3, length: 0))
         }
-        await snap(SettingsView().environment(app), size: NSSize(width: 540, height: 620), dark: dark,
+        await snap(MainView(showGraph: true).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
+                   to: out.appending(path: "graph-\(mode).png"))
+        await snap(SettingsView().environment(graphed), size: NSSize(width: 540, height: 860), dark: dark,
                    to: out.appending(path: "settings-\(mode).png"))
     }
 }

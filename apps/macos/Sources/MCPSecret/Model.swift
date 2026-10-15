@@ -17,6 +17,10 @@ final class AppModel {
     /// Each path's last `ingest` event this session.
     var outcome: [String: Doc] = [:]
     var desktop: Desktop?
+    var drive: Drive?
+    var rules: [Rule] = []
+    /// The sidebar shows only this category's documents; nil: all.
+    var category: String?
     var restartClaude = false
     /// The folder of the last export this session: every ingest refreshes it.
     var exportDir: String?
@@ -43,6 +47,7 @@ final class AppModel {
         var path: String
         var chunks: Int
         var state: State
+        var categories: [String] = []
         var id: String { docId ?? path }
         var name: String { URL(filePath: path).lastPathComponent }
     }
@@ -69,8 +74,14 @@ final class AppModel {
             .map { Row(docId: $0.docId, path: $0.path, chunks: $0.chunks ?? 0, state: state($0.status)) }
         return docs.map { d in
             Row(docId: d.docId, path: d.path, chunks: d.chunks ?? 0,
-                state: d.exists == false ? .missing : d.stale == true ? .changed : state(outcome[d.path]?.status))
+                state: d.exists == false ? .missing : d.stale == true ? .changed : state(outcome[d.path]?.status),
+                categories: d.categories ?? [])
         } + news
+    }
+
+    /// Every category of the indexed documents.
+    var categories: [String] {
+        Set(docs.flatMap { $0.categories ?? [] }).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     var needsSetup: Bool { !(status?.models ?? false) || !(status?.index ?? false) }
@@ -81,18 +92,77 @@ final class AppModel {
         do {
             status = try await cli.events("status").compactMap(\.status).first
             docs = try await cli.events("list").compactMap(\.doc)
+            if let c = category, !categories.contains(c) { category = nil }
         } catch {
             report(error)
         }
     }
 
-    /// `ingest`, live: the job counts files, `outcome` keeps each one's result.
+    /// The indexed documents among `ids` (row ids): a file that failed to index has none.
+    func docs(_ ids: Set<String>) -> [Doc] { docs.filter { $0.docId.map(ids.contains) ?? false } }
+
+    /// `cat add|remove`: a category given to, or taken away from, documents by hand.
+    func setCategory(_ docIds: [String], _ name: String, add: Bool) async {
+        guard !docIds.isEmpty else { return }
+        do {
+            _ = try await cli.events(["cat", add ? "add" : "remove", "--"] + docIds + [name])
+        } catch {
+            return report(error)
+        }
+        await refresh()
+    }
+
+    /// `forget`: documents out of the index; their files stay where they are.
+    func forget(_ docIds: [String]) async {
+        guard !docIds.isEmpty else { return }
+        do {
+            _ = try await cli.events(["forget", "--"] + docIds)
+        } catch {
+            return report(error)
+        }
+        let gone = Set(docIds)
+        for d in docs where d.docId.map(gone.contains) ?? false { outcome[d.path] = nil }  // else: a row again
+        await refresh()
+        if let dir = exportDir { await export(dir, announce: false) }  // a forgotten document must leave it too
+    }
+
+    func loadRules() async {
+        do {
+            rules = try await cli.events("rules").compactMap(\.rule)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// `rules --set`: the rule's terms, none to remove it. Categories change with it: refresh.
+    func setRule(_ name: String, terms: [String]) async {
+        do {
+            rules = try await cli.events(["rules", "--set=\(name)", "--"] + terms).compactMap(\.rule)
+        } catch {
+            return report(error)
+        }
+        await refresh()
+    }
+
     func ingest(_ paths: [String], force: Bool = false) async {
         guard !paths.isEmpty else { return }
-        await perform(L("Indexing")) { [self] in
-            for try await event in cli.run(["ingest"] + (force ? ["--force"] : []) + ["--"] + paths) {
+        await track(L("Indexing"), ["ingest"] + (force ? ["--force"] : []) + ["--"] + paths)
+    }
+
+    /// `drive sync`: the folders' files downloaded (`file` events), then ingested, one stream.
+    func syncDrive() async { await track(L("Syncing Google Drive"), ["drive", "sync"]) }
+
+    /// A command that indexes, live: the job counts files, `outcome` keeps each one's result.
+    private func track(_ title: String, _ args: [String]) async {
+        await perform(title) { [self] in
+            for try await event in cli.run(args) {
                 switch event {
-                case .start(let files, _): job?.total = files ?? 0
+                case .start(let files, _):  // drive sync: its own, then ingest's
+                    job?.total = files ?? 0
+                    job?.done = 0
+                case .file(let path):
+                    job?.current = URL(filePath: path).lastPathComponent
+                    job?.done += 1
                 case .doc(let d):
                     outcome[d.path] = d
                     job?.current = URL(filePath: d.path).lastPathComponent
@@ -118,8 +188,23 @@ final class AppModel {
         }
     }
 
+    /// `export` of some documents: `<doc_id>.md` in `dir`, what the agent sees. Unlike the Cowork
+    /// folder it keeps nothing: no README, nothing deleted, never refreshed.
+    func export(_ docIds: [String], to dir: String) async {
+        await perform(L("Exporting")) { [self] in
+            job?.total = docIds.count
+            for id in docIds {
+                try await cli.export(id, to: URL(filePath: dir))
+                job?.done += 1
+            }
+        }
+    }
+
     /// Every indexed file again, `--force`: applies `allow` changes everywhere.
-    func reindexAll() async {
+    func reindexAll() async { await reindex(docs) }
+
+    /// These documents again, `--force`: those whose file is still there.
+    func reindex(_ docs: [Doc]) async {
         // ponytail: one argv; past ~10^5 paths (ARG_MAX), split the list
         await ingest(docs.filter { $0.exists != false }.map(\.path), force: true)
     }
@@ -138,6 +223,34 @@ final class AppModel {
             }
         }
         await refresh()
+    }
+
+    /// `drive login`, waiting for consent in the browser (Cancel stops it). The first time,
+    /// `client` is the OAuth client file of a Google Cloud project.
+    func connectDrive(client: String?) async {
+        await perform(L("Connecting Google Drive")) { [self] in
+            job?.total = 1
+            job?.current = L("Allow access in your browser")
+            drive = try await cli.events(["drive", "login"] + (client.map { ["--", $0] } ?? []))
+                .compactMap(\.drive).first
+        }
+    }
+
+    /// `drive add|remove`, then a sync: the folder's documents come, or go.
+    func changeDrive(_ action: String, _ folder: String) async {
+        if await driveCommand(action, "--", folder) { await syncDrive() }
+    }
+
+    /// `drive [logout]`: the account and the folders.
+    @discardableResult
+    func driveCommand(_ args: String...) async -> Bool {
+        do {
+            drive = try await cli.events(["drive"] + args).compactMap(\.drive).first
+            return true
+        } catch {
+            report(error)
+            return false
+        }
     }
 
     /// `desktop-config`, or with `--install` / `--uninstall`.
@@ -186,7 +299,7 @@ final class AppModel {
         guard job == nil else { return }
         job = Job(title: title)
         let task = Task {
-            do { try await work() } catch { report(error) }
+            do { try await work() } catch is CancellationError {} catch { report(error) }
         }
         self.task = task
         await task.value
@@ -291,7 +404,10 @@ extension Event {
     var chunk: Chunk? { if case .chunk(let c) = self { c } else { nil } }
     var review: Review? { if case .review(let r) = self { r } else { nil } }
     var desktop: Desktop? { if case .desktop(let d) = self { d } else { nil } }
+    var rule: Rule? { if case .rule(let r) = self { r } else { nil } }
+    var token: Token? { if case .token(let t) = self { t } else { nil } }
     var exported: Exported? { if case .exported(let e) = self { e } else { nil } }
+    var drive: Drive? { if case .drive(let d) = self { d } else { nil } }
 }
 
 extension CLIError {
@@ -303,6 +419,9 @@ extension CLIError {
         case "bad_value": L("The selected text is empty.")
         case "bad_dir": L("Choose a folder outside mcp-secret's data folder.")
         case "bad_config": L("Claude Desktop's configuration file is not valid: fix or delete it, then try again.")
+        case "no_client": L("Choose the OAuth client file (Desktop app) of your Google Cloud project.")
+        case "not_connected": L("Google Drive is not connected, or Google refused the login: connect again.")
+        case "no_folder": L("That is not a Google Drive folder you can open.")
         default: L("The core failed (\(message)).")
         }
     }

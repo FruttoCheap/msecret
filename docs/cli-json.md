@@ -44,11 +44,14 @@ mcp-secret --json <command> [arguments]
 
 | `error` | When |
 | --- | --- |
-| `no_index` | `show`, `review`, `export` before the first `ingest`. |
-| `no_document` | `show`, `review` with an unknown `doc_id`. `show` says it also for a document with 0 chunks (an empty file): check `chunks` in `list` first. |
-| `bad_value` | `deny`, `allow`: the value is empty once normalized. |
+| `no_index` | `show`, `review`, `cat`, `forget`, `tokens`, `export` before the first `ingest`. |
+| `no_document` | `show`, `review`, `cat` with an unknown `doc_id`. `show` says it also for a document with 0 chunks (an empty file): check `chunks` in `list` first. |
+| `bad_value` | `deny`, `allow`, `cat`: the value or name is empty once normalized. `rules --set`: the name is empty or holds `:`. |
 | `bad_dir` | `export`: the folder is the data root, inside it or around it. Nothing is written. |
 | `bad_config` | `desktop-config`: Claude Desktop's config is not a JSON object whose `mcpServers` is an object. Nothing is written. |
+| `no_client` | `drive login`: no OAuth client file given yet, or the file is not a Desktop app client. |
+| `not_connected` | `drive add`, `drive sync` before `drive login`, or Google refused the stored login (revoked, client deleted); `drive login` when consent was denied or never came. |
+| `no_folder` | `drive add`: not a folder link or id, or not a folder you can open. `drive remove`: not in the list. |
 | `failed` | Anything else. `message` is the exception class (`DatabaseError`, `OperationalError`...); details on stderr. |
 
 `message` is English, for logs and fallbacks: show the user a text chosen from `error`.
@@ -74,7 +77,7 @@ Data root, models, index size. One line.
 
 ### models
 
-Downloads the models; the only command that uses the network. Run it once, before the first
+Downloads the models; with `drive`, the only command that uses the network. Run it once, before the first
 `ingest`. Progress is per step, not per byte.
 
 ```json
@@ -119,13 +122,14 @@ happens to the rest of the run.
 One line per indexed document, sorted by path. Nothing when there is no index yet.
 
 ```json
-{"event": "doc", "doc_id": "3f9c0a1b2c3d4e5f", "path": "/Users/me/docs/contratto.pdf", "chunks": 4, "exists": true, "stale": false}
+{"event": "doc", "doc_id": "3f9c0a1b2c3d4e5f", "path": "/Users/me/docs/contratto.pdf", "chunks": 4, "exists": true, "stale": false, "categories": ["Fatture", "docs"]}
 ```
 
 | Field | Type | |
 | --- | --- | --- |
 | `exists` | bool | the file can still be read at `path` |
 | `stale` | bool | it changed since it was indexed (sha256 differs); false when it does not exist |
+| `categories` | array of string | sorted, case-insensitively: see Categories |
 
 `list` hashes every file: it reads them all.
 
@@ -187,6 +191,68 @@ re-indexed: follow with `ingest`.
 - After `allow add`: `ingest --force` of a document publishes the value in clear there; other
   documents keep it masked until they are re-indexed with `--force`.
 
+## Categories
+
+A document's categories are worked out on every `list`, from three sources:
+
+1. The name of the folder that holds its file (automatic).
+2. Every keyword rule (`rules`) with a term in what the agent sees of it (automatic).
+3. `cat` decisions: `add` gives it a category; `remove` takes one away for good, automatic ones
+   too (a rule or a folder that gives it again does not bring it back; `add` does).
+
+Categories, rules and decisions stay in `private/`: nothing of them is published or reaches the
+agent. Editing a rule needs no re-index.
+
+### cat `add|remove <doc_id>... <name>`
+
+One line for each document, in order. An unknown `doc_id` is an error and changes none.
+
+```json
+{"event": "cat", "action": "add", "changed": true}
+```
+
+`name` is trimmed, inner whitespace collapsed; case is kept. `changed` tells whether the
+document's categories changed: false for `add` of one it already had (now kept by hand) and for
+`remove` of one it did not have (nothing is remembered then).
+
+### forget `<doc_id>...`
+
+Takes documents out of the index, for good: their chunks, record and categories go; the files
+stay where they are (`ingest` brings one back, under a new `doc_id`). Values keep their tokens in
+the documents that remain. One `removed` line for each document taken out, as `ingest` sends for
+a file that is gone; an id that is not indexed is skipped.
+
+```json
+{"event": "doc", "doc_id": "a1b2c3d4e5f60718", "path": "/Users/me/docs/old.pdf", "chunks": 0, "status": "removed", "error": null}
+```
+
+### rules `[--set <name> [<term>...]]`
+
+The keyword rules, one line each, in the order of `private/categories.txt`
+(`Name: term, term*, two words` per line, `#` comments; mode 0600). Nothing when there are none.
+`--set` first replaces the rule's terms, or removes the rule if none are given; other lines of
+the file are kept. A term is a word, a prefix (`fattur*`) or a phrase (`nota di credito`),
+matched case- and accent-insensitively; commas in an argument split terms.
+
+```json
+{"event": "rule", "name": "Fatture", "terms": ["fattur*", "imponibile", "nota di credito"]}
+```
+
+### tokens `[--type <TYPE>]... [--limit <n>]`
+
+The tokens published in the most documents (ties by token), with their value in clear: for the
+graph. `--type` keeps only those types; `--limit` defaults to 300. Reads every chunk.
+
+```json
+{"event": "token", "token": "[PERSONA_1]", "type": "PERSONA", "value": "mario rossi", "doc_ids": ["3f9c0a1b2c3d4e5f", "a1b2c3d4e5f60718"]}
+```
+
+| Field | Type | |
+| --- | --- | --- |
+| `type` | string | as in `review` |
+| `value` | string or null | normalized as ingest stores it (lowercase); null for a token-shaped text no ingest wrote |
+| `doc_ids` | array of string | sorted |
+
 ### export `<dir>`
 
 Writes what the agent sees to a folder an agent works in (Claude Cowork):
@@ -236,6 +302,50 @@ The entry: `{"command": "<absolute path of this mcp-secret>", "args": ["serve"]}
 | `command_ok` | bool | that executable exists |
 | `last_log` | string or null | last change of Claude Desktop's log for this server: when it last started or used it |
 
+### drive `[status | login [<client_secret.json>] | logout | add <folder> | remove <folder> | sync]`
+
+Google Drive folders, mirrored into `private/drive/` and indexed from there. `<folder>` is a
+folder link (`https://drive.google.com/drive/folders/<id>`, a shared drive's root too) or its
+id. Settings live in `private/drive.json` (mode 0600): the OAuth client, the refresh token,
+the folders. Every action but `sync` ends with one line:
+
+```json
+{"event": "drive", "client": true, "connected": true, "folders": [{"id": "1AbCdEfGhIjK", "name": "Clienti"}]}
+```
+
+| Field | Type | |
+| --- | --- | --- |
+| `client` | bool | an OAuth client file was given (`login <file>`; kept for the next logins) |
+| `connected` | bool | a refresh token is stored; not checked with Google |
+| `folders` | array | the folders to mirror, in the order added; `name` as on Drive |
+
+- `status` (or no action): reads `drive.json`, no network.
+- `login`: opens the browser for consent (read-only scope) and waits up to 10 minutes after
+  the last request to its loopback port; SIGTERM cancels it. The first time, pass the JSON of a
+  Google Cloud OAuth client of type Desktop app.
+- `logout`: revokes the token with Google (best effort) and forgets it. Folders, the local
+  copy and the index stay.
+- `add`: checks with Google that the folder exists. Nothing is downloaded until `sync`.
+- `remove`: forgets the folder; the next `sync` deletes its copy and its documents.
+- `sync`: lists every folder, then mirrors: files ingest reads are downloaded when new or
+  changed (Google Docs, Sheets, Slides exported to DOCX, XLSX, PPTX), everything else under
+  `private/drive/` is deleted. Then it becomes `ingest private/drive/` on the same stdout:
+
+```json
+{"event": "start", "files": 2}
+{"event": "file", "path": "/Users/me/Library/Application Support/mcp-secret/private/drive/Clienti/contratto.docx", "status": "downloaded", "error": null}
+{"event": "file", "path": "/Users/me/Library/Application Support/mcp-secret/private/drive/Clienti/note.pdf", "status": "error", "error": "HTTPError"}
+{"event": "start", "files": 2}
+{"event": "doc", "doc_id": "3f9c0a1b2c3d4e5f", "path": "/Users/me/Library/Application Support/mcp-secret/private/drive/Clienti/contratto.docx", "chunks": 4, "status": "indexed", "error": null}
+...
+{"event": "done"}
+```
+
+`file.status` is `downloaded`, `unchanged` or `error` (`error`: the exception class; the old
+copy, if any, stays). A failed listing ends the run with an `error` event before any file is
+touched. The exit code is the ingest's: a `file` error alone does not make it 1. Documents
+whose file was deleted come as ingest's `removed` events.
+
 ## Cancelling
 
 - `ingest`: send SIGTERM. The document in progress rolls back, the run exits 143, documents
@@ -248,13 +358,14 @@ The entry: `{"command": "<absolute path of this mcp-secret>", "args": ["serve"]}
 
 ## Concurrency
 
-Run one writing command at a time (`ingest`, `deny`, `allow`, `desktop-config`). A second
-`ingest` waits up to 5 seconds for each lock the first one holds, then fails: the whole run
-(`failed`) or one file (`OperationalError`). Reading commands can run during an ingest.
+Run one writing command at a time (`ingest`, `deny`, `allow`, `cat`, `rules --set`,
+`desktop-config`, `drive` but `status`). A second `ingest` waits up to 5 seconds for each lock the first one holds,
+then fails: the whole run (`failed`) or one file (`OperationalError`). Reading commands can run
+during an ingest.
 
 ## Privacy
 
-`ingest`, `list` and `review` print paths and document text in clear. A UI keeps them in
+`ingest`, `list`, `review`, `tokens` and `drive sync` print paths, document text and values in clear. A UI keeps them in
 memory only: no logs, caches, temporary files or saved window state. Do not run these commands
 through an agent whose output leaves the machine. `show` prints only what the agent sees, and
 `export` writes only that: its folder is as public as `public.db`.

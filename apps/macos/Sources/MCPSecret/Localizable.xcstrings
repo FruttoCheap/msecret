@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@: %lld documents": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@: %2$lld documenti"
+          }
+        }
+      }
+    },
     "%@: %lld of %lld": {
       "localizations": {
         "it": {
@@ -11,12 +21,72 @@
         }
       }
     },
+    "%lld documents selected": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld document selected"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld documents selected"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld documento selezionato"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld documenti selezionati"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld documents written to %@. In Claude Cowork, connect this folder: the documents are in pseudonymized/.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "%1$lld documenti scritti in %2$@. In Claude Cowork collega questa cartella: i documenti sono in pseudonymized/."
+          }
+        }
+      }
+    },
+    "%lld types": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tipi"
+          }
+        }
+      }
+    },
+    "Add": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi"
           }
         }
       }
@@ -61,12 +131,42 @@
         }
       }
     },
+    "All Documents": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutti i documenti"
+          }
+        }
+      }
+    },
+    "All Types": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutti i tipi"
+          }
+        }
+      }
+    },
     "Always Mask": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "Maschera sempre"
+          }
+        }
+      }
+    },
+    "Automatic Categories": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorie automatiche"
           }
         }
       }
@@ -107,6 +207,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Annulla"
+          }
+        }
+      }
+    },
+    "Categories": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorie"
+          }
+        }
+      }
+    },
+    "Category": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categoria"
           }
         }
       }
@@ -261,12 +381,52 @@
         }
       }
     },
+    "Deselect": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deseleziona"
+          }
+        }
+      }
+    },
     "Document layout models": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "Modelli di impaginazione"
+          }
+        }
+      }
+    },
+    "Documents": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Documenti"
+          }
+        }
+      }
+    },
+    "Documents (%lld)": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Documenti (%lld)"
+          }
+        }
+      }
+    },
+    "Documents one by one, or the graph of categories and tokens.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I documenti uno per uno, o il grafo di categorie e token."
           }
         }
       }
@@ -371,6 +531,26 @@
         }
       }
     },
+    "Each document gets the name of its folder, and the category of every rule with a term in what the agent sees: a word, a prefix* or a phrase. Right-click a document to add or remove categories by hand.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni documento prende il nome della sua cartella e la categoria di ogni regola con un termine in ciò che vede l'agente: una parola, un prefisso* o una frase. Clic destro su un documento per aggiungere o togliere categorie a mano."
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifica"
+          }
+        }
+      }
+    },
     "Email": {
       "localizations": {
         "it": {
@@ -387,6 +567,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Esporta"
+          }
+        }
+      }
+    },
+    "Export Anonymized…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esporta anonimizzati…"
           }
         }
       }
@@ -411,12 +601,52 @@
         }
       }
     },
+    "Exporting": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esportazione"
+          }
+        }
+      }
+    },
     "File missing": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "File mancante"
+          }
+        }
+      }
+    },
+    "Fit": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adatta"
+          }
+        }
+      }
+    },
+    "Graph": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grafo"
+          }
+        }
+      }
+    },
+    "Graph of %lld categories and tokens": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grafo di %lld categorie e token"
           }
         }
       }
@@ -447,6 +677,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Indicizza di nuovo tutti i documenti: applica ovunque ciò che hai scelto di non mascherare."
+          }
+        }
+      }
+    },
+    "Index some documents first, or show more token types.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prima indicizza qualche documento, oppure mostra più tipi di token."
           }
         }
       }
@@ -541,6 +781,16 @@
         }
       }
     },
+    "Linked": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collegati"
+          }
+        }
+      }
+    },
     "Missing": {
       "localizations": {
         "it": {
@@ -561,12 +811,42 @@
         }
       }
     },
+    "Name": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nome"
+          }
+        }
+      }
+    },
     "Never": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "Mai"
+          }
+        }
+      }
+    },
+    "New Category": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova categoria"
+          }
+        }
+      }
+    },
+    "New Category…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova categoria…"
           }
         }
       }
@@ -601,6 +881,16 @@
         }
       }
     },
+    "Nodes": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nodi"
+          }
+        }
+      }
+    },
     "Not connected": {
       "localizations": {
         "it": {
@@ -617,6 +907,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Non c'è ancora niente di indicizzato: prima trascina qualche documento."
+          }
+        }
+      }
+    },
+    "Nothing to draw": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niente da disegnare"
           }
         }
       }
@@ -771,12 +1071,82 @@
         }
       }
     },
+    "Remove %lld documents from the index?": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Remove %lld document from the index?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Remove %lld documents from the index?"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Rimuovere %lld documento dall'indice?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Rimuovere %lld documenti dall'indice?"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Remove from Index…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimuovi dall'indice…"
+          }
+        }
+      }
+    },
     "Restart Claude Desktop to apply the change.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "Riavvia Claude Desktop per applicare la modifica."
+          }
+        }
+      }
+    },
+    "Right-click for actions, or drag them out to export what the agent sees.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clic destro per le azioni, oppure trascinali fuori per esportare ciò che vede l'agente."
+          }
+        }
+      }
+    },
+    "Save Rule": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva regola"
           }
         }
       }
@@ -807,6 +1177,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Guida iniziale"
+          }
+        }
+      }
+    },
+    "Shared documents per link: at least %lld": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Documenti in comune per collegamento: almeno %lld"
+          }
+        }
+      }
+    },
+    "Show": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra"
           }
         }
       }
@@ -861,6 +1251,16 @@
         }
       }
     },
+    "Terms, comma-separated": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Termini, separati da virgole"
+          }
+        }
+      }
+    },
     "The configured CLI no longer exists: install again.": {
       "localizations": {
         "it": {
@@ -887,6 +1287,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Errore del core (%@)."
+          }
+        }
+      }
+    },
+    "The files stay where they are. Adding them again indexes them anew.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I file restano dove sono. Aggiungendoli di nuovo vengono indicizzati da capo."
           }
         }
       }
@@ -991,6 +1401,26 @@
         }
       }
     },
+    "Values in clear": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valori in chiaro"
+          }
+        }
+      }
+    },
+    "View": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vista"
+          }
+        }
+      }
+    },
     "Welcome to mcp-secret": {
       "localizations": {
         "it": {
@@ -1021,12 +1451,192 @@
         }
       }
     },
+    "Zoom In": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingrandisci"
+          }
+        }
+      }
+    },
+    "Zoom Out": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimpicciolisci"
+          }
+        }
+      }
+    },
     "“%@” becomes visible to the agent in this document. Other documents keep it masked until you re-index them (Re-index All).": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "“%@” diventa visibile all'agente in questo documento. Negli altri documenti resta mascherato finché non li re-indicizzi (Re-indicizza tutto)."
+          }
+        }
+      }
+    },
+    "Syncing Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizzazione di Google Drive"
+          }
+        }
+      }
+    },
+    "Connecting Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collegamento a Google Drive"
+          }
+        }
+      }
+    },
+    "Allow access in your browser": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consenti l'accesso nel browser"
+          }
+        }
+      }
+    },
+    "Choose the OAuth client file (Desktop app) of your Google Cloud project.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli il file del client OAuth (app desktop) del tuo progetto Google Cloud."
+          }
+        }
+      }
+    },
+    "Google Drive is not connected, or Google refused the login: connect again.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive non è collegato, oppure Google ha rifiutato l'accesso: collegalo di nuovo."
+          }
+        }
+      }
+    },
+    "That is not a Google Drive folder you can open.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è una cartella di Google Drive che puoi aprire."
+          }
+        }
+      }
+    },
+    "Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive"
+          }
+        }
+      }
+    },
+    "The folders you add are copied to this Mac, in the data root's private folder (Docs, Sheets and Slides as Office files), then indexed like your other documents. Google grants read-only access.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le cartelle che aggiungi vengono copiate su questo Mac, nella cartella privata dei dati (Documenti, Fogli e Presentazioni come file Office), poi indicizzate come gli altri documenti. Google concede l'accesso in sola lettura."
+          }
+        }
+      }
+    },
+    "Connect…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collega…"
+          }
+        }
+      }
+    },
+    "Disconnect": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scollega"
+          }
+        }
+      }
+    },
+    "Folder link": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link della cartella"
+          }
+        }
+      }
+    },
+    "Add Folder": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi cartella"
+          }
+        }
+      }
+    },
+    "Sync Now": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizza ora"
+          }
+        }
+      }
+    },
+    "Sync Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizza Google Drive"
+          }
+        }
+      }
+    },
+    "Download what changed in your Google Drive folders, then index it.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarica ciò che è cambiato nelle cartelle di Google Drive, poi lo indicizza."
+          }
+        }
+      }
+    },
+    "Settings…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impostazioni…"
           }
         }
       }
