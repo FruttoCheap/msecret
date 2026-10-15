@@ -11,6 +11,16 @@
         }
       }
     },
+    "%lld documents written to %@. In Claude Cowork, connect this folder: the documents are in pseudonymized/.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld documenti scritti in %2$@. In Claude Cowork collega questa cartella: i documenti sono in pseudonymized/."
+          }
+        }
+      }
+    },
     "Add Documents…": {
       "localizations": {
         "it": {
@@ -67,6 +77,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Conto bancario"
+          }
+        }
+      }
+    },
+    "Choose a folder outside mcp-secret's data folder.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli una cartella fuori da quella dei dati di mcp-secret."
           }
         }
       }
@@ -357,6 +377,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Email"
+          }
+        }
+      }
+    },
+    "Export": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esporta"
+          }
+        }
+      }
+    },
+    "Export for Cowork…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esporta per Cowork…"
+          }
+        }
+      }
+    },
+    "Exported": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esportato"
           }
         }
       }
@@ -957,6 +1007,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cosa vede l'agente"
+          }
+        }
+      }
+    },
+    "Write the documents the agent sees to a folder, for Claude Cowork to work on.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrive in una cartella i documenti che l'agente vede, perché Claude Cowork ci lavori."
           }
         }
       }

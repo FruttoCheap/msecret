@@ -97,6 +97,25 @@ Try it: *"List my sources, then search for the IBANs and tell me which person ea
 to."* Answers come back as tokens (`[IBAN_1]` belongs to `[PERSONA_2]`); searching
 `PERSONA_2` finds every document about that person.
 
+## Claude Cowork
+
+`serve` is for searching. To let Claude work on whole documents (read, edit, summarize, write
+new files, run scripts over all of them), write them to a folder and connect that folder to a
+Cowork session:
+
+```sh
+uv run mcp-secret export ~/Cowork/clienti    # pseudonymized/<doc_id>.md, one per document, and a guide
+```
+
+The files are what `show` prints: pseudonymized, named by random id, nothing else. `export` runs
+in the `serve` sandbox (it reads `public/` and writes that one folder, never `private/`) and makes
+`pseudonymized/` match the index, so a document removed or scrubbed by a later `ingest` disappears at the
+next `export`: run it after every `ingest` (the app does, once you chose a folder). The folder is
+a second copy of what the agent can read: anything the detector missed is readable there too.
+Only files named like its own are ever replaced or deleted there, so the folder can be one with
+files of yours; Claude's own belong outside `pseudonymized/`. What Claude writes carries
+tokens, not values.
+
 ## UI
 
 A macOS app (SwiftUI, macOS 15+) for personal use from this repo: no bundle, no signing. It
@@ -117,6 +136,8 @@ swift run --package-path apps/macos MCPSecret
 - Select text that slipped through and choose Always Mask (⇧⌘M). Select a value that should not
   be masked and choose Don't Mask (⇧⌘U); other documents keep it masked until Re-index All
   (⇧⌘R).
+- Export for Cowork (toolbar): choose a folder, get the pseudonymized documents in it (`export`); it is
+  refreshed after every ingest for the rest of the session.
 - Settings (⌘,): CLI path and data root for the session (`-cliPath`, `-dataRoot` launch
   arguments preset them), model download, Claude Desktop install and removal.
 

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import pwd
+import re
 import shutil
 import signal
 import site
@@ -33,11 +34,12 @@ def _any(kind: str, paths) -> str:
     return " ".join(f"({kind} {_q(p)})" for p in paths)
 
 
-def profile(root: Path | None = None) -> str:
+def profile(root: Path | None = None, writable: Path | None = None) -> str:
     """sandbox-exec profile: no network. With `root` (serve): no reads of $HOME, the data root,
     other users, volumes and temp dirs except public/ and the Python runtime; no file writes
     anywhere (inherited stdio fds still work); no exec but Python itself; no mach services; no
-    process info or signals but its own."""
+    process info or signals but its own. With `writable` (export), that folder is also readable and
+    writable."""
     sbpl = "(version 1)(allow default)(deny network*)"
     if root is None:
         return sbpl
@@ -54,8 +56,9 @@ def profile(root: Path | None = None) -> str:
         "(deny file-write*)",
         '(allow file-write-data (literal "/dev/null") (literal "/dev/dtracehelper"))',
         # SQLite lstat()s every path component when opening public.db
-        f"(allow file-read-metadata {_any('literal', pub.parents)})",
+        f"(allow file-read-metadata {_any('literal', [*pub.parents, *(writable.parents if writable else [])])})",
         f"(allow file-read* {_any('subpath', [pub, *sorted(runtime)])})",
+        f"(allow file-read* file-write* {_any('subpath', [writable])})" if writable else "",
         # sandbox-exec execs the interpreter itself, after the profile applies
         "(deny process-exec*)",
         f"(allow process-exec {_any('literal', {sys.executable, os.path.realpath(sys.executable)})})",
@@ -86,10 +89,10 @@ def _connect_out() -> None:
         s.connect(("127.0.0.1", 9))
 
 
-def _sandboxed(args: argparse.Namespace, root: Path | None, *must_fail) -> None:
-    """Re-exec under sandbox-exec with profile(root), then prove it. Fails closed."""
+def _sandboxed(args: argparse.Namespace, root: Path | None, *must_fail, writable: Path | None = None) -> None:
+    """Re-exec under sandbox-exec with profile(root, writable), then prove it. Fails closed."""
     if not args.sandboxed:  # exec raises if sandbox-exec is missing; a bad profile exits non-zero
-        cmd = sandbox_cmd(profile(root), "-m", "mcp_secret.cli", "--sandboxed", *sys.argv[1:])
+        cmd = sandbox_cmd(profile(root, writable), "-m", "mcp_secret.cli", "--sandboxed", *sys.argv[1:])
         os.execv(SANDBOX, cmd)
     if not all(_denied(op) for op in (_connect_out, *must_fail)):
         sys.exit("mcp-secret: sandbox not active, refusing to run")
@@ -191,6 +194,37 @@ def show(db: Path, doc_id: str) -> None:
         fail("no_document", f"no document {doc_id}")
     for rowid, text in rows:
         out({"event": "chunk", "chunk_id": rowid, "text": text}, f"--- chunk {rowid} ---\n{text}\n")
+
+
+def export(root: Path, dest: Path) -> None:
+    """The published documents as `dest/pseudonymized/<doc_id>.md`, and a guide for the agent, for
+    a folder it works in (Claude Cowork). Reads public.db only. The subfolder is made to match it:
+    what is no longer indexed (a scrubbed or removed document) goes. Only files named like ours are
+    ever deleted or replaced: the folder may be a project that has files of its own."""
+    from mcp_secret.server import TOKENS
+
+    db = root / "public" / "public.db"
+    if not db.exists():
+        fail("no_index", NO_INDEX)
+    docs: dict[str, list[str]] = {}
+    for doc_id, text in _ro(db).execute("SELECT doc_id, text FROM chunks ORDER BY doc_id, seq"):
+        docs.setdefault(doc_id, []).append(text)
+    os.umask(0o022)  # _private() set 0077: the agent may read through another uid (a VM)
+    folder = dest / "pseudonymized"
+    folder.mkdir(parents=True, exist_ok=True)
+    for doc_id, parts in docs.items():
+        _replace(folder / f"{doc_id}.md", "\n\n".join(parts) + "\n", 0o644)
+    keep = {f"{doc_id}.md" for doc_id in docs}
+    ours = re.compile(r"[0-9a-f]{16}\.md(\.tmp)?")  # the .tmp a killed export left, too
+    stale = [p for p in folder.iterdir() if ours.fullmatch(p.name) and p.name not in keep]
+    for p in stale:
+        p.unlink()
+    _replace(dest / "PSEUDONYMIZED.md", f"# Pseudonymized documents\n\n{TOKENS}\n\n"
+             "`pseudonymized/<id>.md` is one document each (random id: no names, no titles). Search "
+             "a token across the folder to find every document about that entity. `mcp-secret "
+             "export` rewrites `pseudonymized/`: put your own files elsewhere.\n", 0o644)
+    out({"event": "export", "dir": str(dest), "docs": len(docs), "removed": len(stale)},
+        f"{len(docs)} documents exported to {dest}")
 
 
 def _review(root: Path, doc_id: str) -> dict:
@@ -314,6 +348,8 @@ def main() -> None:
         p = sub.add_parser(name, help=f"{what} mask a value ({name}.txt)")
         p.add_argument("action", choices=["add", "remove"])
         p.add_argument("value")
+    sub.add_parser("export", help="write the pseudonymized documents to a folder an agent works "
+                   "in (Claude Cowork)").add_argument("dir", type=Path)
     p = sub.add_parser("desktop-config", help="show, add or remove mcp-secret in Claude Desktop")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--install", action="store_true")
@@ -334,6 +370,17 @@ def main() -> None:
         from mcp_secret import server
 
         return server.run(db)
+    if args.cmd == "export":  # reads public/, writes one folder: boxed like serve
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        dest = args.dir.expanduser().resolve()
+        if root.is_relative_to(dest) or dest.is_relative_to(root):  # the box would open private/
+            _json = _jsonl() if args.json else None
+            fail("bad_dir", "choose a folder apart from the data root")
+        if not args.sandboxed:
+            _private(priv)
+            sys.argv[-1] = str(dest)  # the re-exec runs from /, where a relative path means another folder
+            os.chdir("/")
+        _sandboxed(args, root, lambda: os.listdir(priv), writable=dest)
     if args.cmd in ("ingest", "review"):  # parse and detect: no network
         os.environ["HF_HUB_OFFLINE"] = "1"
         if args.cmd == "ingest" and not args.sandboxed:
@@ -379,6 +426,8 @@ def main() -> None:
             if args.action == "add":  # the latest decision wins
                 edit(priv, "allow" if args.cmd == "deny" else "deny", value, False)
             out({"event": args.cmd, "action": args.action, "changed": changed})
+        elif args.cmd == "export":
+            export(root, dest)
         else:
             desktop(root, args.install, args.uninstall)
     except Exception as e:

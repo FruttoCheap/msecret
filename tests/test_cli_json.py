@@ -190,3 +190,41 @@ def test_review_reuses_what_ingest_detected(tmp_path, monkeypatch):
     (docs / "a.txt").write_text(CONTRACT + "Fine.\n")
     with pytest.raises(AssertionError, match="detected again"):  # new text: detected
         ingest.review(root, doc_id)
+
+
+def test_export(tmp_path):
+    root, docs, work = tmp_path / "data", tmp_path / "docs", tmp_path / "work"
+    env = {**os.environ, "MCP_SECRET_HOME": str(root)}
+    assert run(env, "export", str(work), code=1)[0]["error"] == "no_index"
+    docs.mkdir()
+    (docs / "a.txt").write_text(CONTRACT)
+    (docs / "b.txt").write_text(MINUTES)
+    a, b = run(env, "ingest", str(docs))[1:-1]
+    for bad in (root / "public", root.parent):  # inside the data root, or around it
+        assert run(env, "export", str(bad), code=1)[0]["error"] == "bad_dir"
+
+    [ev] = run(env, "export", str(work))  # a new folder, made inside the sandbox
+    assert ev == {"event": "export", "dir": str(work.resolve()), "docs": 2, "removed": 0}
+    files = {p.name: p for p in (work / "pseudonymized").iterdir()}
+    assert sorted(files) == sorted(f"{d['doc_id']}.md" for d in (a, b))
+    for d in (a, b):  # what `show` prints, a document per file
+        shown = "\n\n".join(c["text"] for c in run(env, "show", d["doc_id"])) + "\n"
+        assert files[f"{d['doc_id']}.md"].read_text() == shown
+    clear = ("RSSMRA80A01H501U", "Mario Rossi", "Giulia Bianchi", "3331234567")
+    blob = "".join(p.read_text() for p in work.rglob("*.md"))
+    assert not [v for v in clear if v in blob] and "[PERSONA_" in blob
+    assert "[PERSONA_3]" in (work / "PSEUDONYMIZED.md").read_text()
+    assert (work / "pseudonymized").stat().st_mode & 0o755 == 0o755  # readable through another uid
+    assert all(p.stat().st_mode & 0o777 == 0o644 for p in files.values())
+
+    # the folder follows the index: a gone document and a killed export's leftover go; any other
+    # file stays
+    (work / "notes.md").write_text("mine")
+    (work / "pseudonymized" / "mine.md").write_text("mine")
+    (work / "pseudonymized" / f"{'0' * 16}.md.tmp").write_text("tmp")
+    (docs / "a.txt").unlink()
+    run(env, "ingest", str(docs))
+    [ev] = run(env, "export", str(work))
+    assert (ev["docs"], ev["removed"]) == (1, 2)
+    assert sorted(p.name for p in (work / "pseudonymized").iterdir()) == sorted(["mine.md", f"{b['doc_id']}.md"])
+    assert (work / "notes.md").read_text() == "mine"

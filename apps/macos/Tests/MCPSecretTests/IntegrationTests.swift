@@ -68,4 +68,16 @@ func endToEnd() async throws {
     #expect(app.problem == nil)
     #expect(agent.contains(email.lowercased()))
     #expect(app.rows.first?.state == .indexed)
+
+    // export: a file per document, in clear what was allowed; a later ingest refreshes the folder,
+    // so a value masked after the export leaves it too
+    let work = docs.deletingLastPathComponent().appending(path: "work")
+    await app.export(work.path)
+    #expect(app.problem == nil && app.exportDir == work.path && app.notice != nil)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: work.appending(path: "pseudonymized").path).count == 3)
+    let file = work.appending(path: "pseudonymized/\(doc.docId).md")
+    #expect(try String(contentsOf: file, encoding: .utf8).lowercased().contains(email.lowercased()))
+    await app.decide("deny", email, path: review.path)
+    #expect(app.problem == nil)
+    #expect(try !String(contentsOf: file, encoding: .utf8).lowercased().contains(email.lowercased()))
 }

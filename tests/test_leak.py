@@ -168,6 +168,10 @@ def test_leak(tmp_path: Path) -> None:
     vocab = con.execute("CREATE VIRTUAL TABLE temp.v USING fts5vocab(main, chunks, 'row')")
     assert not leaked(" ".join(t for (t,) in vocab.execute("SELECT term FROM temp.v")))
 
+    r = cli(env, "export", str(tmp_path / "work"))  # the folder an agent works in: same bar
+    assert r.returncode == 0, r.stderr
+    assert not leaked("\n".join(p.read_text() for p in (tmp_path / "work").rglob("*.md")))
+
     sources, windows, out = asyncio.run(_tools(boxed, chunk_ids))
     assert not leaked(out)
     assert len(sources) == 8

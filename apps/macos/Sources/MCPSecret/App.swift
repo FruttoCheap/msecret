@@ -56,11 +56,21 @@ struct MainView: View {
                 .help(L("Index every document again: applies what you chose not to mask everywhere."))
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(app.job != nil || app.docs.isEmpty)
+            Button { if let dir = chooseFolder() { Task { await app.export(dir) } } } label: {
+                Label(L("Export for Cowork…"), systemImage: "square.and.arrow.up")
+            }
+            .help(L("Write the documents the agent sees to a folder, for Claude Cowork to work on."))
+            .disabled(app.job != nil || app.docs.isEmpty)
             Button { guide = true } label: { Label(L("Setup Guide"), systemImage: "questionmark.circle") }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item, .folder],
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { Task { await app.ingest(urls.map(\.path)) } }
+        }
+        .alert(L("Exported"), isPresented: Binding(get: { app.notice != nil },
+                                                  set: { if !$0 { app.notice = nil } })) {
+        } message: {
+            Text(app.notice ?? "")
         }
         .alert(L("Something went wrong"), isPresented: Binding(get: { app.problem != nil },
                                                              set: { if !$0 { app.problem = nil } })) {
@@ -73,6 +83,16 @@ struct MainView: View {
             if !app.needsSetup { app.warm() }  // the reviewer loads its models while you look
         }
     }
+}
+
+/// A folder picked, or made, in the system's open panel.
+@MainActor func chooseFolder() -> String? {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.canCreateDirectories = true
+    panel.prompt = L("Export")
+    return panel.runModal() == .OK ? panel.url?.path : nil
 }
 
 struct Sidebar: View {

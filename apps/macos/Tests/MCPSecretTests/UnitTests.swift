@@ -70,6 +70,8 @@ let DESKTOP = #"{"event": "desktop", "config": "/Users/me/Library/Application Su
         #expect(try Event.decode(#"{"event": "start", "steps": 2}"#) == .start(files: nil, steps: 2))
         #expect(try Event.decode(#"{"event": "step", "step": 1, "name": "docling"}"#) == .step(1, name: "docling"))
         #expect(try Event.decode(#"{"event": "done"}"#) == .done)
+        #expect(try Event.decode(#"{"event": "export", "dir": "/tmp/w", "docs": 2, "removed": 1}"#)
+                == .exported(Exported(dir: "/tmp/w", docs: 2, removed: 1)))
         #expect(try Event.decode(#"{"event": "deny", "action": "add", "changed": true}"#) == .edited(changed: true))
         #expect(try Event.decode(#"{"event": "allow", "action": "remove", "changed": false}"#) == .edited(changed: false))
         #expect(try Event.decode(SHOW) == .chunk(Chunk(chunkId: 7, text: "Contratto tra [PERSONA_1] (CF [CF_1]) e la ditta [ORG_1].\n\nPagamento entro marzo.\n")))

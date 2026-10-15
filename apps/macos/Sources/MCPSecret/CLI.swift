@@ -170,6 +170,7 @@ enum Event: Equatable, Sendable {
     case review(Review)
     case status(Status)
     case desktop(Desktop)
+    case exported(Exported)
     case edited(changed: Bool)
     case error(CLIError)
 
@@ -196,6 +197,7 @@ extension Event: Decodable {
         case "review": self = .review(try Review(from: decoder))
         case "status": self = .status(try Status(from: decoder))
         case "desktop": self = .desktop(try Desktop(from: decoder))
+        case "export": self = .exported(try Exported(from: decoder))
         case "deny", "allow": self = .edited(changed: try c.decode(Bool.self, forKey: .changed))
         case "error": self = .error(try CLIError(from: decoder))
         case let other:
@@ -213,6 +215,13 @@ struct Doc: Decodable, Equatable, Sendable {
     var error: String?
     var exists: Bool?
     var stale: Bool?
+}
+
+/// An `export`: the folder written, the files in its `pseudonymized/`, the stale ones deleted.
+struct Exported: Decodable, Equatable, Sendable {
+    var dir: String
+    var docs: Int
+    var removed: Int
 }
 
 struct Chunk: Decodable, Equatable, Sendable {

@@ -44,9 +44,10 @@ mcp-secret --json <command> [arguments]
 
 | `error` | When |
 | --- | --- |
-| `no_index` | `show`, `review` before the first `ingest`. |
+| `no_index` | `show`, `review`, `export` before the first `ingest`. |
 | `no_document` | `show`, `review` with an unknown `doc_id`. `show` says it also for a document with 0 chunks (an empty file): check `chunks` in `list` first. |
 | `bad_value` | `deny`, `allow`: the value is empty once normalized. |
+| `bad_dir` | `export`: the folder is the data root, inside it or around it. Nothing is written. |
 | `bad_config` | `desktop-config`: Claude Desktop's config is not a JSON object whose `mcpServers` is an object. Nothing is written. |
 | `failed` | Anything else. `message` is the exception class (`DatabaseError`, `OperationalError`...); details on stderr. |
 
@@ -186,6 +187,29 @@ re-indexed: follow with `ingest`.
 - After `allow add`: `ingest --force` of a document publishes the value in clear there; other
   documents keep it masked until they are re-indexed with `--force`.
 
+### export `<dir>`
+
+Writes what the agent sees to a folder an agent works in (Claude Cowork):
+`<dir>/pseudonymized/<doc_id>.md`, one file per document (its chunks in order, blank line
+between), and `<dir>/PSEUDONYMIZED.md` telling the agent what the tokens are. It reads `public.db` only, inside the `serve` sandbox plus write
+access to `<dir>`; it never opens `private/`. `<dir>` is created if its parent exists.
+
+`pseudonymized/` is made to match the index: a file named like an export (16 hex digits, `.md`
+or `.md.tmp`) that is not an indexed document's (removed or scrubbed since the last export, or
+left by a killed run) is deleted. Any other file, there or in `<dir>`, is left alone: `<dir>` may be
+a folder with files of its own, and the agent can write its own there. Run it again after every
+`ingest`. One line.
+
+```json
+{"event": "export", "dir": "/Users/me/Cowork", "docs": 12, "removed": 1}
+```
+
+| Field | Type | |
+| --- | --- | --- |
+| `dir` | string | the folder, absolute |
+| `docs` | int | files written (documents with no chunk, an empty file, get none) |
+| `removed` | int | files deleted from `pseudonymized/` |
+
 ### desktop-config `[--install | --uninstall]`
 
 Shows Claude Desktop's configuration for this server; `--install` adds it, `--uninstall`
@@ -232,4 +256,5 @@ Run one writing command at a time (`ingest`, `deny`, `allow`, `desktop-config`).
 
 `ingest`, `list` and `review` print paths and document text in clear. A UI keeps them in
 memory only: no logs, caches, temporary files or saved window state. Do not run these commands
-through an agent whose output leaves the machine. `show` prints only what the agent sees.
+through an agent whose output leaves the machine. `show` prints only what the agent sees, and
+`export` writes only that: its folder is as public as `public.db`.

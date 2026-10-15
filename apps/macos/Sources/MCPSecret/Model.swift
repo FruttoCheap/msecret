@@ -18,6 +18,9 @@ final class AppModel {
     var outcome: [String: Doc] = [:]
     var desktop: Desktop?
     var restartClaude = false
+    /// The folder of the last export this session: every ingest refreshes it.
+    var exportDir: String?
+    var notice: String?
     var job: Job?
     var problem: String?
     private var task: Task<Void, Never>?
@@ -99,6 +102,20 @@ final class AppModel {
             }
         }
         await refresh()
+        if let dir = exportDir { await export(dir, announce: false) }  // a masked value must leave it too
+    }
+
+    /// `export`: the documents the agent sees, as files in `dir` for a Cowork session.
+    func export(_ dir: String, announce: Bool = true) async {
+        do {
+            guard let done = try await cli.events("export", "--", dir).compactMap(\.exported).first else { return }
+            exportDir = dir
+            if announce {
+                notice = L("\(done.docs) documents written to \(done.dir). In Claude Cowork, connect this folder: the documents are in pseudonymized/.")
+            }
+        } catch {
+            report(error)
+        }
     }
 
     /// Every indexed file again, `--force`: applies `allow` changes everywhere.
@@ -274,6 +291,7 @@ extension Event {
     var chunk: Chunk? { if case .chunk(let c) = self { c } else { nil } }
     var review: Review? { if case .review(let r) = self { r } else { nil } }
     var desktop: Desktop? { if case .desktop(let d) = self { d } else { nil } }
+    var exported: Exported? { if case .exported(let e) = self { e } else { nil } }
 }
 
 extension CLIError {
@@ -283,6 +301,7 @@ extension CLIError {
         case "no_index": L("Nothing is indexed yet: drop some documents first.")
         case "no_document": L("This document is no longer in the index.")
         case "bad_value": L("The selected text is empty.")
+        case "bad_dir": L("Choose a folder outside mcp-secret's data folder.")
         case "bad_config": L("Claude Desktop's configuration file is not valid: fix or delete it, then try again.")
         default: L("The core failed (\(message)).")
         }
