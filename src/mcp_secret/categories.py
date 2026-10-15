@@ -67,9 +67,11 @@ def of_docs(priv_con: sqlite3.Connection, pub_con: sqlite3.Connection,
 
 def _published(pub_con: sqlite3.Connection) -> list[tuple[str, str]]:
     """(doc_id, text) of all the agent sees: the chunks and the masked file names."""
-    from mcp_secret.server import names
-
-    return [*pub_con.execute("SELECT doc_id, text FROM chunks"), *names(pub_con).items()]
+    rows = pub_con.execute("SELECT doc_id, text FROM chunks").fetchall()
+    try:  # not server.names(): importing the MCP SDK takes seconds
+        return rows + pub_con.execute("SELECT doc_id, name FROM names").fetchall()
+    except sqlite3.OperationalError:  # an index from before names
+        return rows
 
 
 def tokens(priv_con: sqlite3.Connection, pub_con: sqlite3.Connection, types: set[str]) -> list[dict]:
