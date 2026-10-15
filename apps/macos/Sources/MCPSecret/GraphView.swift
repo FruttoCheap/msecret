@@ -1,48 +1,54 @@
 import SwiftUI
 
-/// Categories and tokens, linked by the documents they share: a category to the tokens in its
-/// documents, a token to the tokens in the same documents. Documents are not nodes.
+/// Documents, linked by what they share: the same token (a person, an IBAN...) or category.
 struct Graph: Equatable, Sendable {
     struct Node: Identifiable, Equatable, Sendable {
         var id: String
-        var label: String
-        /// The token's type; nil for a category.
-        var type: String?
-        var value: String?
-        var docIds: Set<String>
-        var isCategory: Bool { type == nil }
+        var path: String
+        var categories: [String]
+        var label: String { URL(filePath: path).lastPathComponent }
+        /// The category it is colored by: its folder's, unless taken away; else the first.
+        var main: String? {
+            let folder = URL(filePath: path).deletingLastPathComponent().lastPathComponent
+            return categories.contains(folder) ? folder : categories.first
+        }
     }
 
     struct Edge: Equatable, Sendable {
         var a: Int
         var b: Int
-        /// Documents both ends are in.
-        var weight: Int
+        /// What both documents hold: tokens, and categories as `category:<name>`.
+        var shared: [String]
+        var weight: Int { shared.count }
     }
 
     var nodes: [Node] = []
     var edges: [Edge] = []
+    /// Every token and category (`category:<name>`) in two documents or more, with its nodes;
+    /// the excluded ones too.
+    var links: [String: [Int]] = [:]
 
     init() {}
 
-    /// Categories first, then tokens. An edge where at least `minWeight` documents hold both
-    /// ends; two categories are never linked.
-    init(tokens: [Token], docs: [Doc], minWeight: Int) {
-        var cats: [String: Set<String>] = [:]
-        for d in docs {
-            guard let id = d.docId else { continue }
-            for c in d.categories ?? [] { cats[c, default: []].insert(id) }
-        }
-        nodes = cats.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-            .map { Node(id: "category:\($0)", label: $0, type: nil, value: nil, docIds: cats[$0]!) }
-        nodes += tokens.map { Node(id: $0.token, label: $0.token, type: $0.type, value: $0.value, docIds: Set($0.docIds)) }
-        // ponytail: every pair, O(n²) set intersections; a doc -> nodes index past ~2000 nodes
-        for j in nodes.indices where !nodes[j].isCategory {
-            for i in 0..<j {
-                let w = nodes[i].docIds.intersection(nodes[j].docIds).count
-                if w >= max(minWeight, 1) { edges.append(Edge(a: i, b: j, weight: w)) }
+    /// One node per document. An edge where at least `minWeight` tokens and categories, but the
+    /// `excluded`, are in both documents.
+    init(docs: [Doc], tokens: [Token], excluded: Set<String>, minWeight: Int) {
+        nodes = docs.compactMap { d in d.docId.map { Node(id: $0, path: d.path, categories: d.categories ?? []) } }
+        let at = Dictionary(uniqueKeysWithValues: nodes.indices.map { (nodes[$0].id, $0) })
+        var of: [String: [Int]] = [:]
+        for t in tokens { of[t.token] = t.docIds.compactMap { at[$0] } }
+        for (i, n) in nodes.enumerated() { for c in n.categories { of["category:\(c)", default: []].append(i) } }
+        links = of.filter { $0.value.count > 1 }
+        var shared: [SIMD2<Int>: [String]] = [:]
+        // ponytail: every pair of each link's documents, O(sum k²); a token in thousands of documents is slow until excluded
+        for (key, ix) in links where !excluded.contains(key) {
+            for j in ix.indices {
+                for i in 0..<j { shared[SIMD2(min(ix[i], ix[j]), max(ix[i], ix[j])), default: []].append(key) }
             }
         }
+        edges = shared.filter { $0.value.count >= max(minWeight, 1) }
+            .map { Edge(a: $0.key.x, b: $0.key.y, shared: $0.value.sorted()) }
+            .sorted { ($0.a, $0.b) < ($1.a, $1.b) }
     }
 
     /// The nodes linked to node `i`, heaviest link first.
@@ -96,13 +102,22 @@ struct Graph: Equatable, Sendable {
     }
 }
 
+/// A category's color: its place among `all`, on a wheel of ten. None: gray.
+// ponytail: colors repeat past ten categories; a color per category in Settings if that confuses
+func categoryColor(_ c: String?, _ all: [String]) -> Color {
+    guard let c, let i = all.firstIndex(of: c) else { return .secondary }
+    return [Color.blue, .orange, .green, .red, .purple, .teal, .yellow, .brown, .indigo, .pink][i % 10]
+}
+
 /// What the graph shows, for the session: filters, selection, zoom, and the laid-out graph.
 @MainActor @Observable
 final class GraphModel {
-    /// Token types shown; empty: all.
+    /// Token types that link documents; empty: all.
     var types: Set<String> = []
     var minWeight = 1
-    /// Tokens labelled with their value in clear instead of the token.
+    /// Tokens and categories (`category:<name>`) that link nothing, chosen by hand.
+    var excluded: Set<String> = []
+    /// Tokens listed with their value in clear instead of the token.
     var showValues = false
     var graph = Graph()
     /// Each node's place in the unit square.
@@ -111,21 +126,40 @@ final class GraphModel {
     var selected: Int?
     var scale = 1.0
     var offset = CGSize.zero
+    /// The last `tokens`, by token; asked again only when documents or types change.
+    private(set) var tokens: [String: Token] = [:]
+    private var fetched: Fetch?
+
+    struct Fetch: Equatable {
+        var docs: [Doc]
+        var types: Set<String>
+    }
 
     /// What the graph is made of: it is rebuilt when this changes.
     struct Inputs: Equatable {
         var docs: [Doc]
+        var category: String?
         var types: Set<String>
+        var excluded: Set<String>
         var minWeight: Int
     }
 
     var selectedNode: Graph.Node? { selected.flatMap { $0 < graph.nodes.count ? graph.nodes[$0] : nil } }
 
-    func label(_ n: Graph.Node) -> String { showValues ? n.value ?? n.label : n.label }
+    /// A link's name: the category, the token, or its value in clear.
+    func label(_ key: String) -> String {
+        key.hasPrefix("category:") ? String(key.dropFirst(9)) : showValues ? tokens[key]?.value ?? key : key
+    }
 
-    /// `tokens`, then the graph with the documents' categories, laid out off the main thread.
+    /// The documents of the sidebar's category, linked, laid out off the main thread.
     func load(_ app: AppModel) async {
-        let docs = app.docs, minWeight = minWeight
+        let cat = app.category, excluded = excluded, minWeight = minWeight
+        let docs = app.docs.filter { d in cat.map { d.categories?.contains($0) ?? false } ?? true }
+            .map { d in  // the chosen category is in every document shown: it links all, says nothing
+                var d = d
+                d.categories?.removeAll { $0 == cat }
+                return d
+            }
         guard !docs.isEmpty else {
             (graph, points, selected) = (Graph(), [], nil)
             return
@@ -133,10 +167,16 @@ final class GraphModel {
         loading = true
         defer { loading = false }
         do {
-            let args = ["tokens"] + types.sorted().flatMap { ["--type", $0] }
-            let tokens = try await app.cli.events(args).compactMap(\.token)
+            let want = Fetch(docs: app.docs, types: types)
+            if fetched != want {
+                let args = ["tokens"] + types.sorted().flatMap { ["--type", $0] }
+                let got = try await app.cli.events(args).compactMap(\.token)
+                guard !Task.isCancelled else { return }  // a cancelled stream ends early: not all of them
+                (tokens, fetched) = (Dictionary(got.map { ($0.token, $0) }) { a, _ in a }, want)
+            }
+            let toks = Array(tokens.values)
             let (g, at) = await Task.detached {
-                let g = Graph(tokens: tokens, docs: docs, minWeight: minWeight)
+                let g = Graph(docs: docs, tokens: toks, excluded: excluded, minWeight: minWeight)
                 return (g, Graph.layout(g))
             }.value
             guard !Task.isCancelled else { return }
@@ -149,8 +189,8 @@ final class GraphModel {
     }
 }
 
-/// The graph of categories and tokens. Click a node for its documents and links; hover for its
-/// value; pinch to zoom, drag to pan.
+/// The graph of documents, colored by category. Click one for what links it, double-click to
+/// open it; pinch to zoom, drag to pan.
 struct GraphView: View {
     @Environment(AppModel.self) private var app
     @Bindable var model: GraphModel
@@ -169,7 +209,7 @@ struct GraphView: View {
                             ProgressView()
                         } else {
                             ContentUnavailableView(L("Nothing to draw"), systemImage: "point.3.connected.trianglepath.dotted",
-                                                   description: Text(L("Index some documents first, or show more token types.")))
+                                                   description: Text(L("Index some documents first.")))
                         }
                     }
                 }
@@ -177,7 +217,8 @@ struct GraphView: View {
             GraphPanel(model: model, open: open).frame(width: 300)
         }
         .navigationTitle(L("Graph"))
-        .task(id: GraphModel.Inputs(docs: app.docs, types: model.types, minWeight: model.minWeight)) {
+        .task(id: GraphModel.Inputs(docs: app.docs, category: app.category, types: model.types,
+                                    excluded: model.excluded, minWeight: model.minWeight)) {
             await model.load(app)
         }
     }
@@ -190,9 +231,9 @@ struct GraphView: View {
                        y: size.height / 2 + (p.y - 0.5) * h * scale + model.offset.height + pan.height)
     }
 
-    func radius(_ n: Graph.Node) -> Double {
-        n.isCategory ? 8 : min(3 + 2 * Double(n.docIds.count).squareRoot(), 12)
-    }
+    let radius = 6.0
+
+    func color(_ n: Graph.Node) -> Color { categoryColor(n.main, app.categories) }
 
     /// The node under `at`, the nearest if several.
     func hit(_ at: CGPoint, _ size: CGSize) -> Int? {
@@ -202,7 +243,7 @@ struct GraphView: View {
             let p = position(i, size)
             return (i, hypot(p.x - at.x, p.y - at.y))
         }
-        .filter { $0.1 <= radius(g.nodes[$0.0]) + 4 }
+        .filter { $0.1 <= radius + 4 }
         .min { $0.1 < $1.1 }?.0
     }
 
@@ -210,6 +251,9 @@ struct GraphView: View {
         Canvas { ctx, size in draw(ctx, size) }
             .contentShape(Rectangle())
             .gesture(SpatialTapGesture().onEnded { model.selected = hit($0.location, size) })
+            .simultaneousGesture(SpatialTapGesture(count: 2).onEnded { v in
+                if let i = hit(v.location, size) { open(model.graph.nodes[i].id) }
+            })
             .simultaneousGesture(DragGesture()
                 .onChanged { pan = $0.translation }
                 .onEnded { v in
@@ -226,7 +270,7 @@ struct GraphView: View {
             .onContinuousHover { phase in
                 if case .active(let at) = phase { hover = hit(at, size) } else { hover = nil }
             }
-            .accessibilityLabel(L("Graph of \(model.graph.nodes.count) categories and tokens"))
+            .accessibilityLabel(L("Graph of \(model.graph.nodes.count) documents"))
     }
 
     func draw(_ ctx: GraphicsContext, _ size: CGSize) {
@@ -243,30 +287,22 @@ struct GraphView: View {
             ctx.stroke(line, with: .color(on ? .accentColor : .secondary.opacity(focus == nil ? 0.3 : 0.08)),
                        lineWidth: on ? 2 : min(0.5 + 0.5 * Double(e.weight - 1), 3))
         }
-        // tokens, then categories over them, then every label over all nodes
-        let order = g.nodes.indices.filter { !g.nodes[$0].isCategory } + g.nodes.indices.filter { g.nodes[$0].isCategory }
-        for i in order {
-            let n = g.nodes[i], r = radius(n), box = CGRect(x: at[i].x - r, y: at[i].y - r, width: 2 * r, height: 2 * r)
-            let color = n.type.map { Color(nsColor: Highlight.color($0)) } ?? .primary
-            ctx.fill(n.isCategory ? Path(roundedRect: box, cornerRadius: 3) : Path(ellipseIn: box),
-                     with: .color(color.opacity(focus != nil && !near.contains(i) ? 0.2 : 0.9)))
+        for i in g.nodes.indices {
+            let box = CGRect(x: at[i].x - radius, y: at[i].y - radius, width: 2 * radius, height: 2 * radius)
+            ctx.fill(Path(ellipseIn: box), with: .color(color(g.nodes[i]).opacity(focus != nil && !near.contains(i) ? 0.2 : 0.9)))
             if i == model.selected {
                 ctx.stroke(Path(ellipseIn: box.insetBy(dx: -4, dy: -4)), with: .color(.accentColor), lineWidth: 2)
             }
         }
-        for i in order where i != hover {
-            let n = g.nodes[i], dim = focus != nil && !near.contains(i)
-            if n.isCategory || near.contains(i) || scale >= 2 {
-                ctx.draw(Text(model.label(n)).font(n.isCategory ? .callout.bold() : .caption)
-                            .foregroundStyle(dim ? .secondary : .primary),
-                         at: CGPoint(x: at[i].x, y: at[i].y + radius(n) + 2), anchor: .top)
-            }
+        for i in g.nodes.indices where i != hover && (near.contains(i) || scale >= 2 || g.nodes.count <= 12) {
+            ctx.draw(Text(g.nodes[i].label).font(.caption)
+                        .foregroundStyle(focus != nil && !near.contains(i) ? .secondary : .primary),
+                     at: CGPoint(x: at[i].x, y: at[i].y + radius + 2), anchor: .top)
         }
-        if let h = hover, h < at.count {  // token and value side by side, whatever the toggle
+        if let h = hover, h < at.count {  // the name and the categories
             let n = g.nodes[h]
-            let line = n.isCategory ? L("\(n.label): \(n.docIds.count) documents")
-                : [n.label, n.value].compactMap { $0 }.joined(separator: "  ")
-            let text = ctx.resolve(Text(line).font(.callout)), s = text.measure(in: size)
+            let text = ctx.resolve(Text(([n.label] + n.categories).joined(separator: "  ·  ")).font(.callout))
+            let s = text.measure(in: size)
             let box = CGRect(x: at[h].x + 12, y: at[h].y - s.height - 16, width: s.width + 14, height: s.height + 8)
             ctx.fill(Path(roundedRect: box, cornerRadius: 6), with: .color(Color(nsColor: .windowBackgroundColor)))
             ctx.stroke(Path(roundedRect: box, cornerRadius: 6), with: .color(.secondary.opacity(0.6)))
@@ -275,8 +311,9 @@ struct GraphView: View {
     }
 }
 
-/// Filters and zoom; then the selected node (its documents and links), or every node to pick
-/// one: what the canvas shows, as a list VoiceOver and the keyboard can use.
+/// Filters and zoom; then the selected document (what links it, each link can be switched off),
+/// or every category and document to pick one: what the canvas shows, as a list VoiceOver and
+/// the keyboard can use.
 struct GraphPanel: View {
     @Environment(AppModel.self) private var app
     @Bindable var model: GraphModel
@@ -287,7 +324,7 @@ struct GraphPanel: View {
         List {
             Section(L("Show")) {
                 Toggle(L("Values in clear"), isOn: $model.showValues)
-                Stepper(L("Shared documents per link: at least \(model.minWeight)"), value: $model.minWeight, in: 1...20)
+                Stepper(L("In common per link: at least \(model.minWeight)"), value: $model.minWeight, in: 1...20)
                 Menu(model.types.isEmpty ? L("All Types") : L("\(model.types.count) types")) {
                     Button(L("All Types")) { model.types = [] }
                     Divider()
@@ -295,6 +332,9 @@ struct GraphPanel: View {
                         Toggle(Highlight.name(t), isOn: Binding(get: { model.types.contains(t) },
                                                                set: { if $0 { model.types.insert(t) } else { model.types.remove(t) } }))
                     }
+                }
+                if !model.excluded.isEmpty {
+                    Button(L("Switch On Excluded (\(model.excluded.count))")) { model.excluded = [] }
                 }
                 HStack {
                     Button { model.scale = max(model.scale / 1.5, 0.5) } label: { Label(L("Zoom Out"), systemImage: "minus.magnifyingglass") }
@@ -304,15 +344,12 @@ struct GraphPanel: View {
                 .labelStyle(.iconOnly)
             }
             if let i = model.selected, let n = model.selectedNode {
-                Section(n.type.map(Highlight.name) ?? L("Category")) {
-                    Text(verbatim: n.label).font(.headline).textSelection(.enabled)
-                    if let v = n.value { Text(verbatim: v).textSelection(.enabled) }
-                    Button(L("Deselect")) { model.selected = nil }
-                }
-                Section(L("Documents (\(n.docIds.count))")) {
-                    ForEach(app.docs.filter { n.docIds.contains($0.docId ?? "") }, id: \.path) { d in
-                        Button(URL(filePath: d.path).lastPathComponent) { d.docId.map(open) }
-                            .buttonStyle(.link).help(d.path)
+                Section(L("Document")) {
+                    Text(verbatim: n.label).font(.headline).help(n.path)
+                    if !n.categories.isEmpty { Text(verbatim: n.categories.joined(separator: ", ")).foregroundStyle(.secondary) }
+                    HStack {
+                        Button(L("Open")) { open(n.id) }
+                        Button(L("Deselect")) { model.selected = nil }
                     }
                 }
                 Section(L("Linked")) {
@@ -321,10 +358,41 @@ struct GraphPanel: View {
                             .buttonStyle(.plain)
                     }
                 }
+                Section(L("In common")) {
+                    ForEach(g.links.filter { $0.value.contains(i) }.sorted { ($0.value.count, $1.key) > ($1.value.count, $0.key) },
+                            id: \.key) { key, ix in
+                        Toggle(isOn: Binding(get: { !model.excluded.contains(key) },
+                                             set: { if $0 { model.excluded.remove(key) } else { model.excluded.insert(key) } })) {
+                            HStack {
+                                link(key)
+                                Text(verbatim: model.label(key)).lineLimit(1).truncationMode(.middle)
+                                Spacer()
+                                Text(verbatim: "\(ix.count)").foregroundStyle(.secondary)
+                            }
+                        }
+                        .help(L("Off: it links no document"))
+                    }
+                }
             } else {
-                Section(L("Nodes")) {
-                    ForEach(g.nodes.indices.sorted { g.nodes[$0].docIds.count > g.nodes[$1].docIds.count }, id: \.self) { i in
-                        Button { model.selected = i } label: { row(g.nodes[i], g.nodes[i].docIds.count) }
+                Section(L("Categories")) {
+                    ForEach(app.categories, id: \.self) { c in
+                        Button { app.category = app.category == c ? nil : c } label: {
+                            HStack {
+                                Image(systemName: "circle.fill").foregroundStyle(categoryColor(c, app.categories))
+                                    .accessibilityHidden(true)
+                                Text(verbatim: c).lineLimit(1)
+                                Spacer()
+                                if app.category == c { Image(systemName: "checkmark").accessibilityLabel(L("Shown")) }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Section(L("Documents")) {
+                    let degree = g.edges.reduce(into: [Int](repeating: 0, count: g.nodes.count)) { $0[$1.a] += 1; $0[$1.b] += 1 }
+                    ForEach(g.nodes.indices.sorted { (degree[$0], $1) > (degree[$1], $0) }, id: \.self) { i in
+                        Button { model.selected = i } label: { row(g.nodes[i], degree[i]) }
                             .buttonStyle(.plain)
                     }
                 }
@@ -332,15 +400,23 @@ struct GraphPanel: View {
         }
     }
 
+    /// A token's dot in its type's color, or a category's folder.
+    func link(_ key: String) -> some View {
+        Image(systemName: key.hasPrefix("category:") ? "folder" : "circle.fill")
+            .foregroundStyle(model.tokens[key].map { Color(nsColor: Highlight.color($0.type)) } ?? .secondary)
+            .accessibilityHidden(true)
+    }
+
     func row(_ n: Graph.Node, _ count: Int) -> some View {
         HStack {
-            Image(systemName: n.isCategory ? "folder" : "circle.fill")
-                .foregroundStyle(n.type.map { Color(nsColor: Highlight.color($0)) } ?? .secondary)
+            Image(systemName: "doc.fill")
+                .foregroundStyle(categoryColor(n.main, app.categories))
                 .accessibilityHidden(true)
-            Text(verbatim: model.label(n)).lineLimit(1).truncationMode(.middle)
+            Text(verbatim: n.label).lineLimit(1).truncationMode(.middle)
             Spacer()
             Text(verbatim: "\(count)").foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
+        .help(n.path)
     }
 }

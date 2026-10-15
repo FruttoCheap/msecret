@@ -2,9 +2,9 @@
 
 Indexes your documents locally and lets an AI agent search them over MCP, **pseudonymized
 only**: names, tax codes, IBANs, emails, phones become tokens like `[PERSONA_3]`, the same
-token for the same value in every document. The agent sees no file names and no file metadata
-(title, author, dates). Emails keep their From/To/Cc/Subject lines: they are text, masked like
-the body, so whatever detection misses there is published like a miss in the body.
+token for the same value in every document. The agent sees no folders and no file metadata
+(title, author, dates). The file name and an email's From/To/Cc/Subject lines are text, masked
+with the body, so whatever detection misses there is published like a miss in the body.
 
 - `ingest` (no network) parses, detects PII, writes the token map to `private/private.db` and
   the pseudonymized chunks to `public/public.db`.
@@ -176,9 +176,10 @@ swift run --package-path apps/macos MCPSecret
 - Categories: the sidebar filters by one; right-click a document to add or remove one by hand.
   Each document also gets its folder's name and the category of every keyword rule (Settings)
   with a term in what the agent sees.
-- Graph (toolbar): categories and tokens, linked by the documents they share, tokens colored
-  by type. Hover a node for its value, click it for its documents and links (a document opens
-  from there); filter by type and by shared documents per link, pinch or zoom, drag to pan.
+- Graph (toolbar): the documents, colored by category, linked by the tokens and categories
+  they share; it follows the sidebar's category. Click a document for what links it (switch a
+  link off when it is everywhere, like your own name), double-click to open it; filter by type
+  and by links in common, pinch or zoom, drag to pan.
 - Export for Cowork (toolbar): choose a folder, get the pseudonymized documents in it (`export`); it is
   refreshed after every ingest for the rest of the session.
 - Settings (⌘,): CLI path and data root for the session (`-cliPath`, `-dataRoot` launch

@@ -67,7 +67,7 @@ struct MainView: View {
                 Label(L("Graph"), systemImage: "point.3.connected.trianglepath.dotted").tag(true)
             }
             .pickerStyle(.segmented)
-            .help(L("Documents one by one, or the graph of categories and tokens."))
+            .help(L("Documents one by one, or the graph of what links them."))
             Button { importing = true } label: { Label(L("Add Documents…"), systemImage: "plus") }
                 .keyboardShortcut("o")
                 .disabled(app.job != nil)

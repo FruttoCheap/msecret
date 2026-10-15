@@ -25,10 +25,19 @@ def connect(db: Path) -> sqlite3.Connection:
     return con
 
 
+def names(con: sqlite3.Connection) -> dict[str, str]:
+    """doc_id -> file name, masked like the text, no folders. {} for an index from before names."""
+    try:
+        return dict(con.execute("SELECT doc_id, name FROM names"))
+    except sqlite3.OperationalError:
+        return {}
+
+
 @app.tool(annotations=RO, description=f"""Full-text search (BM25) over the user's
 pseudonymized documents. {TOKENS}
 Query syntax (SQLite FTS5): words, prefix*, "exact phrase", AND, OR, NOT,
-tokens without brackets (PERSONA_3). Returns up to k (max 20) chunks, best first.""")
+tokens without brackets (PERSONA_3). Returns up to k (max 20) chunks, best first, each with
+its document's file name (pseudonymized too): cite documents by that name.""")
 def search(query: str, k: int = 10) -> list[dict]:
     try:
         rows = con.execute("SELECT rowid, doc_id, text, -rank FROM chunks WHERE chunks MATCH ? "
@@ -36,7 +45,8 @@ def search(query: str, k: int = 10) -> list[dict]:
                            (re.sub(r"\[(\w+)\]", r"\1", query), max(1, min(k, 20)))).fetchall()
     except sqlite3.OperationalError:
         raise ToolError('invalid query: use words, prefix*, "phrases", AND/OR/NOT') from None
-    return [{"chunk_id": i, "doc_id": d, "text": t, "score": s} for i, d, t, s in rows]
+    name = names(con).get
+    return [{"chunk_id": i, "doc_id": d, "name": name(d), "text": t, "score": s} for i, d, t, s in rows]
 
 
 @app.tool(annotations=RO)
@@ -46,14 +56,16 @@ def get_chunk(chunk_id: int, neighbors: int = 0) -> list[dict]:
     rows = con.execute("SELECT c.rowid, c.doc_id, c.text FROM chunks c, chunks x WHERE x.rowid = ? "
                        "AND c.doc_id = x.doc_id AND c.seq BETWEEN x.seq - ? AND x.seq + ? "
                        "ORDER BY c.seq", (chunk_id, n, n))
-    return [{"chunk_id": i, "doc_id": d, "text": t} for i, d, t in rows]
+    name = names(con).get
+    return [{"chunk_id": i, "doc_id": d, "name": name(d), "text": t} for i, d, t in rows]
 
 
 @app.tool(annotations=RO)
 def list_sources() -> list[dict]:
-    """Indexed documents: random doc_id and chunk count. Titles and paths are not exported."""
+    """Indexed documents: random doc_id, file name (pseudonymized, no folders), chunk count."""
     rows = con.execute("SELECT doc_id, count(*) FROM chunks GROUP BY doc_id ORDER BY doc_id")
-    return [{"doc_id": d, "n_chunks": n} for d, n in rows]
+    name = names(con).get
+    return [{"doc_id": d, "name": name(d), "n_chunks": n} for d, n in rows]
 
 
 def run(db: Path) -> None:

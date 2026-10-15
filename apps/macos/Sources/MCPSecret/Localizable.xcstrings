@@ -101,6 +101,16 @@
         }
       }
     },
+    "Add Folder": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi cartella"
+          }
+        }
+      }
+    },
     "Add your documents": {
       "localizations": {
         "it": {
@@ -151,6 +161,16 @@
         }
       }
     },
+    "Allow access in your browser": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consenti l'accesso nel browser"
+          }
+        }
+      }
+    },
     "Always Mask": {
       "localizations": {
         "it": {
@@ -177,16 +197,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Conto bancario"
-          }
-        }
-      }
-    },
-    "Choose a folder outside mcp-secret's data folder.": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scegli una cartella fuori da quella dei dati di mcp-secret."
           }
         }
       }
@@ -247,6 +257,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Le modifiche valgono fino all'uscita. Premi Invio per applicarle."
+          }
+        }
+      }
+    },
+    "Choose a folder outside mcp-secret's data folder.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli una cartella fuori da quella dei dati di mcp-secret."
+          }
+        }
+      }
+    },
+    "Choose the OAuth client file (Desktop app) of your Google Cloud project.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli il file del client OAuth (app desktop) del tuo progetto Google Cloud."
           }
         }
       }
@@ -331,6 +361,26 @@
         }
       }
     },
+    "Connecting Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collegamento a Google Drive"
+          }
+        }
+      }
+    },
+    "Connect…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collega…"
+          }
+        }
+      }
+    },
     "Core": {
       "localizations": {
         "it": {
@@ -391,6 +441,26 @@
         }
       }
     },
+    "Disconnect": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scollega"
+          }
+        }
+      }
+    },
+    "Document": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Documento"
+          }
+        }
+      }
+    },
     "Document layout models": {
       "localizations": {
         "it": {
@@ -421,12 +491,12 @@
         }
       }
     },
-    "Documents one by one, or the graph of categories and tokens.": {
+    "Documents one by one, or the graph of what links them.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "I documenti uno per uno, o il grafo di categorie e token."
+            "value": "I documenti uno per uno, o il grafo di ciò che li collega."
           }
         }
       }
@@ -487,6 +557,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Scarica i modelli"
+          }
+        }
+      }
+    },
+    "Download what changed in your Google Drive folders, then index it.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarica ciò che è cambiato nelle cartelle di Google Drive, poi lo indicizza."
           }
         }
       }
@@ -631,6 +711,36 @@
         }
       }
     },
+    "Folder link": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link della cartella"
+          }
+        }
+      }
+    },
+    "Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive"
+          }
+        }
+      }
+    },
+    "Google Drive is not connected, or Google refused the login: connect again.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive non è collegato, oppure Google ha rifiutato l'accesso: collegalo di nuovo."
+          }
+        }
+      }
+    },
     "Graph": {
       "localizations": {
         "it": {
@@ -641,12 +751,12 @@
         }
       }
     },
-    "Graph of %lld categories and tokens": {
+    "Graph of %lld documents": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grafo di %lld categorie e token"
+            "value": "Grafo di %lld documenti"
           }
         }
       }
@@ -657,6 +767,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Documento d'identità"
+          }
+        }
+      }
+    },
+    "In common": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In comune"
+          }
+        }
+      }
+    },
+    "In common per link: at least %lld": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In comune per collegamento: almeno %lld"
           }
         }
       }
@@ -681,12 +811,12 @@
         }
       }
     },
-    "Index some documents first, or show more token types.": {
+    "Index some documents first.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prima indicizza qualche documento, oppure mostra più tipi di token."
+            "value": "Prima indicizza qualche documento."
           }
         }
       }
@@ -881,16 +1011,6 @@
         }
       }
     },
-    "Nodes": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nodi"
-          }
-        }
-      }
-    },
     "Not connected": {
       "localizations": {
         "it": {
@@ -931,12 +1051,32 @@
         }
       }
     },
+    "Off: it links no document": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spento: non collega nessun documento"
+          }
+        }
+      }
+    },
     "Once, about 2 GB. It is the only step that uses the network.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "Una volta sola, circa 2 GB. È l'unico passo che usa la rete."
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri"
           }
         }
       }
@@ -1171,6 +1311,16 @@
         }
       }
     },
+    "Settings…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impostazioni…"
+          }
+        }
+      }
+    },
     "Setup Guide": {
       "localizations": {
         "it": {
@@ -1181,22 +1331,22 @@
         }
       }
     },
-    "Shared documents per link: at least %lld": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Documenti in comune per collegamento: almeno %lld"
-          }
-        }
-      }
-    },
     "Show": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
             "value": "Mostra"
+          }
+        }
+      }
+    },
+    "Shown": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrata"
           }
         }
       }
@@ -1241,6 +1391,46 @@
         }
       }
     },
+    "Switch On Excluded (%lld)": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riattiva gli esclusi (%lld)"
+          }
+        }
+      }
+    },
+    "Sync Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizza Google Drive"
+          }
+        }
+      }
+    },
+    "Sync Now": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizza ora"
+          }
+        }
+      }
+    },
+    "Syncing Google Drive": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizzazione di Google Drive"
+          }
+        }
+      }
+    },
     "Tax code": {
       "localizations": {
         "it": {
@@ -1257,6 +1447,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Termini, separati da virgole"
+          }
+        }
+      }
+    },
+    "That is not a Google Drive folder you can open.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è una cartella di Google Drive che puoi aprire."
           }
         }
       }
@@ -1297,6 +1497,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "I file restano dove sono. Aggiungendoli di nuovo vengono indicizzati da capo."
+          }
+        }
+      }
+    },
+    "The folders you add are copied to this Mac, in the data root's private folder (Docs, Sheets and Slides as Office files), then indexed like your other documents. Google grants read-only access.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le cartelle che aggiungi vengono copiate su questo Mac, nella cartella privata dei dati (Documenti, Fogli e Presentazioni come file Office), poi indicizzate come gli altri documenti. Google concede l'accesso in sola lettura."
           }
         }
       }
@@ -1477,166 +1687,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "“%@” diventa visibile all'agente in questo documento. Negli altri documenti resta mascherato finché non li re-indicizzi (Re-indicizza tutto)."
-          }
-        }
-      }
-    },
-    "Syncing Google Drive": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sincronizzazione di Google Drive"
-          }
-        }
-      }
-    },
-    "Connecting Google Drive": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Collegamento a Google Drive"
-          }
-        }
-      }
-    },
-    "Allow access in your browser": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Consenti l'accesso nel browser"
-          }
-        }
-      }
-    },
-    "Choose the OAuth client file (Desktop app) of your Google Cloud project.": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scegli il file del client OAuth (app desktop) del tuo progetto Google Cloud."
-          }
-        }
-      }
-    },
-    "Google Drive is not connected, or Google refused the login: connect again.": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Google Drive non è collegato, oppure Google ha rifiutato l'accesso: collegalo di nuovo."
-          }
-        }
-      }
-    },
-    "That is not a Google Drive folder you can open.": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Non è una cartella di Google Drive che puoi aprire."
-          }
-        }
-      }
-    },
-    "Google Drive": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Google Drive"
-          }
-        }
-      }
-    },
-    "The folders you add are copied to this Mac, in the data root's private folder (Docs, Sheets and Slides as Office files), then indexed like your other documents. Google grants read-only access.": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le cartelle che aggiungi vengono copiate su questo Mac, nella cartella privata dei dati (Documenti, Fogli e Presentazioni come file Office), poi indicizzate come gli altri documenti. Google concede l'accesso in sola lettura."
-          }
-        }
-      }
-    },
-    "Connect…": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Collega…"
-          }
-        }
-      }
-    },
-    "Disconnect": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scollega"
-          }
-        }
-      }
-    },
-    "Folder link": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Link della cartella"
-          }
-        }
-      }
-    },
-    "Add Folder": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aggiungi cartella"
-          }
-        }
-      }
-    },
-    "Sync Now": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sincronizza ora"
-          }
-        }
-      }
-    },
-    "Sync Google Drive": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sincronizza Google Drive"
-          }
-        }
-      }
-    },
-    "Download what changed in your Google Drive folders, then index it.": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scarica ciò che è cambiato nelle cartelle di Google Drive, poi lo indicizza."
-          }
-        }
-      }
-    },
-    "Settings…": {
-      "localizations": {
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Impostazioni…"
           }
         }
       }

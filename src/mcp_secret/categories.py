@@ -65,17 +65,16 @@ def of_docs(priv_con: sqlite3.Connection, pub_con: sqlite3.Connection,
     return {d: sorted(c, key=str.lower) for d, c in cats.items()}
 
 
-def tokens(priv_con: sqlite3.Connection, pub_con: sqlite3.Connection, types: set[str],
-           limit: int) -> list[dict]:
-    """The `limit` tokens published in the most documents (of `types`, if any), each with its
-    value in clear and the documents it is in."""
+def tokens(priv_con: sqlite3.Connection, pub_con: sqlite3.Connection, types: set[str]) -> list[dict]:
+    """The tokens published in two documents or more (of `types`, if any), in the most documents
+    first, each with its value in clear and its documents: what links documents in the graph."""
     # ponytail: reads every chunk per call; keep a doc -> tokens table at ingest if it gets slow
     docs: dict[str, set[str]] = {}
     for d, text in pub_con.execute("SELECT doc_id, text FROM chunks"):
         for t in re.findall(_TOKEN, text):
             docs.setdefault(t, set()).add(d)
     values = dict(priv_con.execute("SELECT token, value FROM entities"))
-    found = [(t, t[1:-1].rsplit("_", 1)[0], ds) for t, ds in docs.items()]
+    found = [(t, t[1:-1].rsplit("_", 1)[0], ds) for t, ds in docs.items() if len(ds) > 1]
     found = sorted((x for x in found if not types or x[1] in types), key=lambda x: (-len(x[2]), x[0]))
     return [{"event": "token", "token": t, "type": ty, "value": values.get(t), "doc_ids": sorted(ds)}
-            for t, ty, ds in found[:limit]]
+            for t, ty, ds in found]

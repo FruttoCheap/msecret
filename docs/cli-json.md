@@ -152,13 +152,13 @@ parsed text is the one indexed: the spans found then are reused (`ingest --force
 them). One line.
 
 ```json
-{"event": "review", "doc_id": "3f9c0a1b2c3d4e5f", "path": "/Users/me/docs/contratto.txt", "exists": true, "stale": false, "text": "Tra Mario Rossi (CF RSSMRA80A01H501U) e...", "spans": [{"start": 4, "end": 15, "type": "PERSONA", "token": "[PERSONA_1]"}, {"start": 20, "end": 36, "type": "CF", "token": "[CF_1]"}]}
+{"event": "review", "doc_id": "3f9c0a1b2c3d4e5f", "path": "/Users/me/docs/contratto.txt", "exists": true, "stale": false, "text": "contratto.txt\n\nTra Mario Rossi (CF RSSMRA80A01H501U) e...", "spans": [{"start": 19, "end": 30, "type": "PERSONA", "token": "[PERSONA_1]"}, {"start": 35, "end": 51, "type": "CF", "token": "[CF_1]"}]}
 ```
 
 | Field | Type | |
 | --- | --- | --- |
 | `exists`, `stale` | bool | as in `list` |
-| `text` | string | the text in clear; `""` when the file does not exist |
+| `text` | string | the text in clear: the file name (no folders, `_` and `-` as spaces), a blank line, the content. The agent sees the name masked as `name`, the rest as chunks. `""` when the file does not exist |
 | `spans` | array | sorted, non-overlapping; `[]` when the file does not exist |
 | `spans[].start`, `.end` | int | code point offsets in `text`, end exclusive |
 | `spans[].type` | string | `PERSONA`, `ORG`, `LUOGO`, `INDIRIZZO`, `CF`, `PIVA`, `IBAN`, `EMAIL`, `TELEFONO`, `TARGA`, `DOCUMENTO`, `DATA_NASCITA` (values from `deny.txt` are `PERSONA`) |
@@ -239,10 +239,11 @@ matched case- and accent-insensitively; commas in an argument split terms.
 {"event": "rule", "name": "Fatture", "terms": ["fattur*", "imponibile", "nota di credito"]}
 ```
 
-### tokens `[--type <TYPE>]... [--limit <n>]`
+### tokens `[--type <TYPE>]...`
 
-The tokens published in the most documents (ties by token), with their value in clear: for the
-graph. `--type` keeps only those types; `--limit` defaults to 300. Reads every chunk.
+Every token published in two documents or more, in the most documents first (ties by token),
+with its value in clear: what links documents in the graph. `--type` keeps only those types.
+Reads every chunk.
 
 ```json
 {"event": "token", "token": "[PERSONA_1]", "type": "PERSONA", "value": "mario rossi", "doc_ids": ["3f9c0a1b2c3d4e5f", "a1b2c3d4e5f60718"]}
@@ -257,8 +258,8 @@ graph. `--type` keeps only those types; `--limit` defaults to 300. Reads every c
 ### export `<dir>`
 
 Writes what the agent sees to a folder an agent works in (Claude Cowork):
-`<dir>/pseudonymized/<doc_id>.md`, one file per document (its chunks in order, blank line
-between), and `<dir>/PSEUDONYMIZED.md` telling the agent what the tokens are. It reads `public.db` only, inside the `serve` sandbox plus write
+`<dir>/pseudonymized/<doc_id>.md`, one file per document (its pseudonymized file name, then its
+chunks in order, blank line between), and `<dir>/PSEUDONYMIZED.md` telling the agent what the tokens are. It reads `public.db` only, inside the `serve` sandbox plus write
 access to `<dir>`; it never opens `private/`. `<dir>` is created if its parent exists.
 
 `pseudonymized/` is made to match the index: a file named like an export (16 hex digits, `.md`

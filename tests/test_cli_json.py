@@ -61,11 +61,12 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
     [r] = run(env, "review", a["doc_id"])
     assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == files  # wrote nothing
     assert (r["event"], r["doc_id"], r["path"], r["exists"], r["stale"], r["text"]) == (
-        "review", a["doc_id"], a["path"], True, False, CONTRACT)
+        "review", a["doc_id"], a["path"], True, False, "a.txt\n\n" + CONTRACT)
     assert {"PERSONA", "CF", "IBAN"} <= {s["type"] for s in r["spans"]}
     assert all(s["token"].startswith(f"[{s['type']}_") for s in r["spans"])
     masked = _apply(r["text"], [(s["start"], s["end"], s["token"]) for s in r["spans"]])
-    assert chunk(masked) == [c["text"] for c in shown] and shown[0]["event"] == "chunk"
+    assert masked.startswith("a.txt\n\n")  # the file name: what the agent sees as `name`
+    assert chunk(masked[7:]) == [c["text"] for c in shown] and shown[0]["event"] == "chunk"
     # review -: one worker, models loaded once, a line per doc_id read on stdin until it closes
     w = subprocess.run([CLI, "--json", "review", "-"], env=env, input=f"{a['doc_id']}\n\n{'f' * 16}\n",
                        capture_output=True, text=True, check=True)
@@ -228,13 +229,14 @@ def test_categories_and_tokens(tmp_path):
     assert [d["categories"] for d in run(env, "list")] == [["Clienti"], ["Urgente", "Verbali"]]
     assert run(env, "rules", "--set", "Pagamenti") == [{"event": "rule", "name": "Altro", "terms": ["x"]}]
 
-    # tokens: in the most documents first, value in clear, the documents; filtered by type
-    toks = run(env, "tokens")
-    assert all(t["event"] == "token" and t["value"] and t["doc_ids"] for t in toks)
-    rossi = next(t for t in toks if t["value"] == "mario rossi")
-    assert rossi["type"] == "PERSONA" and rossi["doc_ids"] == [a["doc_id"]]
-    assert {t["type"] for t in run(env, "tokens", "--type", "IBAN")} == {"IBAN"}
-    assert len(run(env, "tokens", "--limit", "1")) == 1
+    # tokens: those in two documents or more, value in clear, the documents; filtered by type
+    (docs / "Clienti" / "c.txt").write_text("Saldo su IBAN IT60X0542811101000000123456.\n")
+    run(env, "ingest", str(docs))
+    c = next(d for d in run(env, "list") if d["path"].endswith("c.txt"))
+    assert [(t["event"], t["type"], t["value"], t["doc_ids"]) for t in run(env, "tokens")] == [
+        ("token", "IBAN", "it60x0542811101000000123456", sorted([a["doc_id"], c["doc_id"]]))]
+    assert run(env, "tokens", "--type", "IBAN") == run(env, "tokens")
+    assert run(env, "tokens", "--type", "PERSONA") == []
 
     # a document gone takes its decisions along
     (docs / "Verbali" / "b.txt").unlink()
@@ -293,7 +295,8 @@ def test_export(tmp_path):
     files = {p.name: p for p in (work / "pseudonymized").iterdir()}
     assert sorted(files) == sorted(f"{d['doc_id']}.md" for d in (a, b))
     for d in (a, b):  # what `show` prints, a document per file
-        shown = "\n\n".join(c["text"] for c in run(env, "show", d["doc_id"])) + "\n"
+        chunks = [c["text"] for c in run(env, "show", d["doc_id"])]
+        shown = "\n\n".join([Path(d["path"]).name, *chunks]) + "\n"  # its name first
         assert files[f"{d['doc_id']}.md"].read_text() == shown
     clear = ("RSSMRA80A01H501U", "Mario Rossi", "Giulia Bianchi", "3331234567")
     blob = "".join(p.read_text() for p in work.rglob("*.md"))

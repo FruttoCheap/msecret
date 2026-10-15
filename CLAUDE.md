@@ -9,7 +9,7 @@ text returned by MCP tools.
 
 ## Invariant (non-negotiable)
 - public/public.db holds only pseudonymized text. No paths, titles, metadata, or vectors
-  computed from clear text.
+  computed from clear text. The file name (no folders) is text: masked with the content.
 - The MCP process (`serve`) opens only public/public.db, read-only, under sandbox-exec:
   no network, no reads of $HOME except public/ and the Python runtime.
 - No path exists from a token back to its real value, not even for queries.

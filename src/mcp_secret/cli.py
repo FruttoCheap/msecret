@@ -249,11 +249,11 @@ def rules(priv: Path, name: str | None, terms: list[str]) -> None:
         out({"event": "rule", "name": n, "terms": ts}, f"{n}\t{', '.join(ts)}")
 
 
-def tokens(root: Path, types: list[str], limit: int) -> None:
+def tokens(root: Path, types: list[str]) -> None:
     from mcp_secret import categories
 
     priv_con, pub_con = _index(root)
-    for ev in categories.tokens(priv_con, pub_con, set(types), max(1, limit)):
+    for ev in categories.tokens(priv_con, pub_con, set(types)):
         out(ev, "\t".join([ev["token"], str(len(ev["doc_ids"])), ev["value"] or ""]))
 
 
@@ -273,14 +273,18 @@ def export(root: Path, dest: Path) -> None:
     a folder it works in (Claude Cowork). Reads public.db only. The subfolder is made to match it:
     what is no longer indexed (a scrubbed or removed document) goes. Only files named like ours are
     ever deleted or replaced: the folder may be a project that has files of its own."""
-    from mcp_secret.server import TOKENS
+    from mcp_secret.server import TOKENS, names
 
     db = root / "public" / "public.db"
     if not db.exists():
         fail("no_index", NO_INDEX)
+    con = _ro(db)
     docs: dict[str, list[str]] = {}
-    for doc_id, text in _ro(db).execute("SELECT doc_id, text FROM chunks ORDER BY doc_id, seq"):
+    for doc_id, text in con.execute("SELECT doc_id, text FROM chunks ORDER BY doc_id, seq"):
         docs.setdefault(doc_id, []).append(text)
+    for doc_id, name in names(con).items():  # its first line: the agent cites it by name
+        if doc_id in docs:
+            docs[doc_id].insert(0, name)
     os.umask(0o022)  # _private() set 0077: the agent may read through another uid (a VM)
     folder = dest / "pseudonymized"
     folder.mkdir(parents=True, exist_ok=True)
@@ -292,7 +296,8 @@ def export(root: Path, dest: Path) -> None:
     for p in stale:
         p.unlink()
     _replace(dest / "PSEUDONYMIZED.md", f"# Pseudonymized documents\n\n{TOKENS}\n\n"
-             "`pseudonymized/<id>.md` is one document each (random id: no names, no titles). Search "
+             "`pseudonymized/<id>.md` is one document each (random id); its first line is the file "
+             "name, pseudonymized too: cite documents by that name. Search "
              "a token across the folder to find every document about that entity. `mcp-secret "
              "export` rewrites `pseudonymized/`: put your own files elsewhere.\n", 0o644)
     out({"event": "export", "dir": str(dest), "docs": len(docs), "removed": len(stale)},
@@ -480,9 +485,8 @@ def main() -> None:
     p.add_argument("--set", metavar="NAME", help="set the rule's terms (none: remove it)")
     p.add_argument("terms", nargs="*", help="words, prefix*, or phrases; a document with any of "
                    "them in what the agent sees gets the category")
-    p = sub.add_parser("tokens", help="the tokens in the most documents, values in clear")
-    p.add_argument("--type", action="append", default=[], help="only this type (repeatable)")
-    p.add_argument("--limit", type=int, default=300)
+    sub.add_parser("tokens", help="the tokens in two documents or more, values in clear"
+                   ).add_argument("--type", action="append", default=[], help="only this type (repeatable)")
     sub.add_parser("export", help="write the pseudonymized documents to a folder an agent works "
                    "in (Claude Cowork)").add_argument("dir", type=Path)
     p = sub.add_parser("desktop-config", help="show, add or remove mcp-secret in Claude Desktop")
@@ -578,7 +582,7 @@ def main() -> None:
         elif args.cmd == "rules":
             rules(priv, args.set, args.terms)
         elif args.cmd == "tokens":
-            tokens(root, args.type, args.limit)
+            tokens(root, args.type)
         elif args.cmd == "export":
             export(root, dest)
         elif args.cmd == "drive":

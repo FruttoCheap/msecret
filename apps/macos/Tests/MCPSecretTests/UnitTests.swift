@@ -347,7 +347,7 @@ let DRIVE_SYNC = """
 
 let TOKENS = """
 {"event": "token", "token": "[PERSONA_1]", "type": "PERSONA", "value": "mario rossi", "doc_ids": ["aaaaaaaaaaaaaaaa", "cccccccccccccccc"]}
-{"event": "token", "token": "[IBAN_1]", "type": "IBAN", "value": "it60x0542811101000000123456", "doc_ids": ["aaaaaaaaaaaaaaaa"]}
+{"event": "token", "token": "[IBAN_1]", "type": "IBAN", "value": "it60x0542811101000000123456", "doc_ids": ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"]}
 {"event": "token", "token": "[ORG_1]", "type": "ORG", "value": null, "doc_ids": ["bbbbbbbbbbbbbbbb"]}
 """
 let CATEGORIZED = """
@@ -369,30 +369,28 @@ let CATEGORIZED = """
         #expect(try Event.decode(LIST.components(separatedBy: "\n")[0]).doc?.categories == nil)  // before categories
     }
 
-    @Test func graphLinksByDocumentsShared() {
-        let g = Graph(tokens: events(TOKENS).compactMap(\.token), docs: events(CATEGORIZED).compactMap(\.doc), minWeight: 1)
-        #expect(g.nodes.map(\.label) == ["Clienti", "Fatture", "Verbali", "[PERSONA_1]", "[IBAN_1]", "[ORG_1]"])
-        #expect(g.nodes.map(\.isCategory) == [true, true, true, false, false, false])
-        func weight(_ a: String, _ b: String) -> Int? {
-            let (i, j) = (g.nodes.firstIndex { $0.label == a }!, g.nodes.firstIndex { $0.label == b }!)
-            return g.edges.first { Set([$0.a, $0.b]) == Set([i, j]) }?.weight
-        }
-        #expect(weight("Clienti", "[PERSONA_1]") == 2 && weight("Fatture", "[PERSONA_1]") == 1)
-        #expect(weight("[PERSONA_1]", "[IBAN_1]") == 1 && weight("Verbali", "[ORG_1]") == 1)
-        #expect(weight("Clienti", "Fatture") == nil && weight("[ORG_1]", "[PERSONA_1]") == nil)
-        #expect(g.neighbors(3).map(\.weight) == [2, 1, 1])  // [PERSONA_1]: Clienti first
-        let strict = Graph(tokens: events(TOKENS).compactMap(\.token), docs: events(CATEGORIZED).compactMap(\.doc), minWeight: 2)
-        #expect(strict.edges.count == 1)
+    @Test func graphLinksDocumentsByTokensAndCategories() {
+        let docs = events(CATEGORIZED).compactMap(\.doc), tokens = events(TOKENS).compactMap(\.token)
+        let g = Graph(docs: docs, tokens: tokens, excluded: [], minWeight: 1)
+        #expect(g.nodes.map(\.label) == ["a.txt", "b.txt", "c.txt"] && g.nodes.map(\.main) == ["Clienti", "Verbali", "Clienti"])
+        #expect(g.edges == [Graph.Edge(a: 0, b: 1, shared: ["[IBAN_1]"]),
+                            Graph.Edge(a: 0, b: 2, shared: ["[PERSONA_1]", "category:Clienti"])])
+        #expect(Set(g.links.keys) == ["[PERSONA_1]", "[IBAN_1]", "category:Clienti"])  // in one document: no link
+        #expect(g.neighbors(0).map(\.weight) == [2, 1])
+        #expect(Graph(docs: docs, tokens: tokens, excluded: [], minWeight: 2).edges.map(\.b) == [2])
+        let off = Graph(docs: docs, tokens: tokens, excluded: ["category:Clienti", "[IBAN_1]"], minWeight: 1)
+        #expect(off.edges == [Graph.Edge(a: 0, b: 2, shared: ["[PERSONA_1]"])] && off.links == g.links)
     }
 
     @Test func layoutFitsTheSquareAndPullsLinksTogether() {
-        let g = Graph(tokens: events(TOKENS).compactMap(\.token), docs: events(CATEGORIZED).compactMap(\.doc), minWeight: 1)
+        let g = Graph(docs: events(CATEGORIZED).compactMap(\.doc), tokens: events(TOKENS).compactMap(\.token),
+                      excluded: [], minWeight: 1)
         let p = Graph.layout(g)
         #expect(p.count == g.nodes.count && p == Graph.layout(g))  // deterministic
         #expect(p.allSatisfy { (0...1).contains($0.x) && (0...1).contains($0.y) })
         func dist(_ a: Int, _ b: Int) -> Double { hypot(p[a].x - p[b].x, p[a].y - p[b].y) }
-        #expect(dist(2, 5) < dist(2, 3))  // Verbali sits by its token, away from the other group
-        #expect(Graph.layout(Graph()) == [] && Graph.layout(Graph(tokens: [], docs: [], minWeight: 1)) == [])
+        #expect(dist(0, 2) < dist(1, 2))  // c sits by a, its strongest link, away from b
+        #expect(Graph.layout(Graph()) == [] && Graph.layout(Graph(docs: [], tokens: [], excluded: [], minWeight: 1)) == [])
     }
 
     @MainActor @Test func byHandAndByRule() async throws {
@@ -412,7 +410,7 @@ let CATEGORIZED = """
         #expect(core.calls.filter { $0.hasSuffix("list") }.count == 3)  // each change refreshes
     }
 
-    @MainActor @Test func graphModelLoadsTokensAndKeepsTheSelection() async throws {
+    @MainActor @Test func graphModelAsksTokensOnceAndFollowsTheCategory() async throws {
         let core = try Recorded(["status": (STATUS, 0), "list": (CATEGORIZED, 0), "tokens": (TOKENS, 0)])
         let app = AppModel(cliPath: core.path)
         let graph = GraphModel()
@@ -420,15 +418,23 @@ let CATEGORIZED = """
         #expect(graph.graph.nodes.isEmpty && core.calls.isEmpty)  // nothing indexed: no call
         await app.refresh()
         await graph.load(app)
-        #expect(graph.graph.nodes.count == 6 && graph.points.count == 6)
-        graph.selected = 4
+        #expect(graph.graph.nodes.count == 3 && graph.points.count == 3)
+        graph.selected = 2
+        graph.excluded = ["category:Clienti"]
+        await graph.load(app)
+        #expect(graph.graph.edges.map(\.shared) == [["[IBAN_1]"], ["[PERSONA_1]"]])
+        #expect(core.calls.filter { $0.contains("tokens") }.count == 1)  // same documents: no new call
+        app.category = "Clienti"
+        await graph.load(app)
+        #expect(graph.graph.nodes.map(\.label) == ["a.txt", "c.txt"] && graph.selectedNode?.label == "c.txt")
+        #expect(graph.graph.nodes[0].categories == ["Fatture"] && graph.graph.nodes[0].main == "Fatture")  // the chosen one links all
         graph.types = ["IBAN", "PERSONA"]
         await graph.load(app)
-        #expect(graph.selectedNode?.label == "[IBAN_1]")
         #expect(core.calls.last == "--json tokens --type IBAN --type PERSONA")
+        #expect(graph.label("[IBAN_1]") == "[IBAN_1]" && graph.label("category:Clienti") == "Clienti")
         graph.showValues = true
-        #expect(graph.label(graph.graph.nodes[4]) == "it60x0542811101000000123456")
-        #expect(graph.label(graph.graph.nodes[5]) == "[ORG_1]")  // no value: the token
+        #expect(graph.label("[IBAN_1]") == "it60x0542811101000000123456")
+        #expect(graph.label("[ORG_1]") == "[ORG_1]")  // no value: the token
     }
 }
 

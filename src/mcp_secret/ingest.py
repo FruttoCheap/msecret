@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS entities(type TEXT NOT NULL, value TEXT PRIMARY KEY, 
 {CATS};
 CREATE VIRTUAL TABLE IF NOT EXISTS pub.chunks
     USING fts5(doc_id UNINDEXED, seq UNINDEXED, text, tokenize="unicode61 tokenchars '_'");
+CREATE TABLE IF NOT EXISTS pub.names(doc_id TEXT PRIMARY KEY, name TEXT NOT NULL);
 INSERT INTO pub.chunks(chunks, rank) VALUES ('secure-delete', 1);
 """
 _TOKEN = r"(?-i:\[[A-Z]+(?:_[A-Z]+)*_\d+\])"
@@ -123,6 +124,13 @@ def clean(text: str) -> str:
     hyphen) dropped, compatibility forms (fullwidth, NBSP) folded. NFKC output is NFC too."""
     # ponytail: homoglyphs (a Cyrillic letter in a CF) stay; add a confusables fold if needed
     return unicodedata.normalize("NFKC", "".join(c for c in text if unicodedata.category(c) != "Cf"))
+
+
+def source(path: Path) -> str:
+    """What ingest detects and masks: the file name on the first line (no folders; "_" and "-"
+    as spaces, so the model and known values see its words), a blank line, the text. Detected
+    with the text, the name gets its context: "CV_Rossi.pdf" next to "Mario Rossi"."""
+    return clean(" ".join(re.sub(r"[_-]", " ", path.name).split()) + "\n\n" + parse(path))
 
 
 def norm(value: str) -> str:
@@ -213,6 +221,10 @@ def sweep(con: sqlite3.Connection, new: dict) -> None:
     if not new:
         return
     pat = _pattern(new)
+    # ponytail: every name, every sweep; an FTS prefilter like the chunks' if ingest slows on it
+    for doc_id, name in con.execute("SELECT doc_id, name FROM pub.names").fetchall():
+        if c := [(m.start(), m.end(), _lookup(new, m)) for m in _hits(pat, name)]:
+            con.execute("UPDATE pub.names SET name = ? WHERE doc_id = ?", (_apply(name, c), doc_id))
     query = " OR ".join('"' + w.replace('"', '""') + '"' for v in new for w in v.split())
     for (doc_id,) in con.execute("SELECT DISTINCT doc_id FROM pub.chunks WHERE chunks MATCH ?",
                                  (query,)).fetchall():
@@ -331,6 +343,7 @@ def forget(con: sqlite3.Connection, doc_id: str) -> None:
     with con:
         con.execute("BEGIN IMMEDIATE")
         con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
+        con.execute("DELETE FROM pub.names WHERE doc_id = ?", (doc_id,))
         con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
         con.execute("DELETE FROM detected WHERE doc_id = ?", (doc_id,))
         con.execute("DELETE FROM cats WHERE doc_id = ?", (doc_id,))
@@ -349,20 +362,26 @@ def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str], public: se
                 force: bool) -> tuple[str, int | None]:
     """(doc_id, chunk count), the count None if the file is unchanged and not `force`d."""
     sha = hashlib.sha256(path.read_bytes()).hexdigest()
-    row = con.execute("SELECT id, sha256 FROM docs WHERE path = ?", (str(path),)).fetchone()
-    if row and row[1] == sha and not force:
+    # no name yet: indexed before names were published, read once more
+    row = con.execute("SELECT id, sha256, (SELECT 1 FROM pub.names WHERE doc_id = id) FROM docs "
+                      "WHERE path = ?", (str(path),)).fetchone()
+    if row and row[1] == sha and row[2] and not force:
         return row[0], None
-    text = clean(parse(path))
+    text = source(path)
     spans = pii.detect(text)  # slow part, outside the write lock
     doc_id = row[0] if row else secrets.token_hex(8)
     new: dict[str, str] = {}
     with con:  # one transaction over private.db + public.db
         con.execute("BEGIN IMMEDIATE")
-        chunks = chunk(_apply(text, masks(con, text, spans, allow, public, new)))
+        cuts = masks(con, text, spans, allow, public, new)
+        n = text.index("\n\n")  # the name's line ends: a token across it masks both sides
+        name = _apply(text[:n], [(s, min(e, n), t) for s, e, t in cuts if s < n])
+        chunks = chunk(_apply(text[n:], [(max(s, n) - n, e - n, t) for s, e, t in cuts if e > n]))
         con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
         sweep(con, new)
         con.executemany("INSERT INTO pub.chunks(doc_id, seq, text) VALUES (?, ?, ?)",
                         [(doc_id, i, c) for i, c in enumerate(chunks)])
+        con.execute("INSERT OR REPLACE INTO pub.names VALUES (?, ?)", (doc_id, name))
         con.execute("INSERT OR REPLACE INTO docs VALUES (?, ?, ?)", (doc_id, str(path), sha))
         con.execute("INSERT OR REPLACE INTO detected VALUES (?, ?, ?)",
                     (doc_id, _sha(text), json.dumps([[x.start, x.end, x.type] for x in spans])))
@@ -430,7 +449,7 @@ def review(root: Path, doc_id: str) -> dict | None:
            "stale": sha not in (None, row[1]), "text": "", "spans": []}
     if sha:
         allow, public, _ = lists(con, root / "private")
-        out["text"] = text = clean(parse(Path(row[0])))
+        out["text"] = text = source(Path(row[0]))
         known = con.execute("SELECT spans FROM detected WHERE doc_id = ? AND text_sha = ?",
                             (doc_id, _sha(text))).fetchone()
         spans = [pii.Span(*x) for x in json.loads(known[0])] if known else pii.detect(text)
