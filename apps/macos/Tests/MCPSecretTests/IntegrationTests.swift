@@ -77,7 +77,7 @@ func endToEnd() async throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: work.appending(path: "pseudonymized").path).count == 3)
     let file = work.appending(path: "pseudonymized/\(doc.docId).md")
     #expect(try String(contentsOf: file, encoding: .utf8).lowercased().contains(email.lowercased()))
-    await app.decide("deny", email, path: review.path)
+    await app.decide("deny", email, paths: [review.path])
     #expect(app.problem == nil)
     #expect(try !String(contentsOf: file, encoding: .utf8).lowercased().contains(email.lowercased()))
 }

@@ -5,7 +5,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from mcp_secret.ingest import _TOKEN
+from mcp_secret.ingest import _TOKEN, _hits, _lookup, _pattern
 
 
 def name(s: str) -> str:
@@ -65,16 +65,34 @@ def of_docs(priv_con: sqlite3.Connection, pub_con: sqlite3.Connection,
     return {d: sorted(c, key=str.lower) for d, c in cats.items()}
 
 
+def _published(pub_con: sqlite3.Connection) -> list[tuple[str, str]]:
+    """(doc_id, text) of all the agent sees: the chunks and the masked file names."""
+    from mcp_secret.server import names
+
+    return [*pub_con.execute("SELECT doc_id, text FROM chunks"), *names(pub_con).items()]
+
+
 def tokens(priv_con: sqlite3.Connection, pub_con: sqlite3.Connection, types: set[str]) -> list[dict]:
-    """The tokens published in two documents or more (of `types`, if any), in the most documents
-    first, each with its value in clear and its documents: what links documents in the graph."""
+    """Every published token (of `types`, if any), in the most documents first, each with its
+    value in clear and its documents. Those in two documents or more link documents in the graph."""
     # ponytail: reads every chunk per call; keep a doc -> tokens table at ingest if it gets slow
     docs: dict[str, set[str]] = {}
-    for d, text in pub_con.execute("SELECT doc_id, text FROM chunks"):
+    for d, text in _published(pub_con):
         for t in re.findall(_TOKEN, text):
             docs.setdefault(t, set()).add(d)
     values = dict(priv_con.execute("SELECT token, value FROM entities"))
-    found = [(t, t[1:-1].rsplit("_", 1)[0], ds) for t, ds in docs.items() if len(ds) > 1]
+    found = [(t, t[1:-1].rsplit("_", 1)[0], ds) for t, ds in docs.items()]
     found = sorted((x for x in found if not types or x[1] in types), key=lambda x: (-len(x[2]), x[0]))
     return [{"event": "token", "token": t, "type": ty, "value": values.get(t), "doc_ids": sorted(ds)}
             for t, ty, ds in found]
+
+
+def in_clear(pub_con: sqlite3.Connection | None, values: list[str]) -> list[dict]:
+    """Each value with the documents that publish it in clear, matched the way ingest masks."""
+    docs: dict[str, set[str]] = {v: set() for v in values}
+    if values and pub_con:
+        pat, same = _pattern(values), {v: v for v in values}
+        for d, text in _published(pub_con):
+            for m in _hits(pat, text):
+                docs[_lookup(same, m)].add(d)
+    return [{"event": "value", "value": v, "doc_ids": sorted(ds)} for v, ds in docs.items()]

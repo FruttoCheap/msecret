@@ -21,6 +21,46 @@
         }
       }
     },
+    "%lld documents": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld document"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld documents"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld documento"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld documenti"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld documents selected": {
       "localizations": {
         "en": {
@@ -491,12 +531,12 @@
         }
       }
     },
-    "Documents one by one, or the graph of what links them.": {
+    "Documents one by one, the graph of what links them, or every value masked and where.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "I documenti uno per uno, o il grafo di ciò che li collega."
+            "value": "I documenti uno per uno, il grafo di ciò che li collega, o ogni valore mascherato e dove."
           }
         }
       }
@@ -771,6 +811,16 @@
         }
       }
     },
+    "In clear": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In chiaro"
+          }
+        }
+      }
+    },
     "In common": {
       "localizations": {
         "it": {
@@ -921,6 +971,36 @@
         }
       }
     },
+    "Mask": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maschera"
+          }
+        }
+      }
+    },
+    "Masked": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mascherati"
+          }
+        }
+      }
+    },
+    "Masked Values": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valori mascherati"
+          }
+        }
+      }
+    },
     "Missing": {
       "localizations": {
         "it": {
@@ -1027,6 +1107,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Non c'è ancora niente di indicizzato: prima trascina qualche documento."
+          }
+        }
+      }
+    },
+    "Nothing masked yet": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancora nulla di mascherato"
           }
         }
       }
@@ -1607,6 +1697,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Partita IVA"
+          }
+        }
+      }
+    },
+    "Value or token": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valore o token"
           }
         }
       }

@@ -261,9 +261,24 @@ let DRIVE_SYNC = """
     @Test func errorsReachTheUserAndStopTheAction() async throws {
         let core = try Recorded(["deny": (#"{"event": "error", "error": "bad_value", "message": "empty value"}"#, 1)])
         let app = AppModel(cliPath: core.path)
-        await app.decide("deny", "x", path: "/docs/a.txt")
+        await app.decide("deny", "x", paths: ["/docs/a.txt"])
         #expect(app.problem == CLIError(error: "bad_value", message: "").text)
         #expect(core.calls == ["--json deny add -- x"])  // no ingest after a failed deny
+    }
+
+    @Test func maskingFromTheValuesList() async throws {
+        let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0), "ingest": (INGEST, 0),
+                                 "allow": (#"{"event": "allow", "action": "add", "changed": true}"#, 0),
+                                 "deny": (#"{"event": "deny", "action": "add", "changed": true}"#, 0)])
+        let app = AppModel(cliPath: core.path)
+        await app.refresh()
+        await app.mask("mario rossi", false, docIds: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"])  // b's file is gone
+        await app.mask("frittata", true, docIds: [])  // in clear nowhere yet: denied, nothing to re-index
+        #expect(app.problem == nil)
+        #expect(core.calls.filter { !$0.hasSuffix("status") && !$0.hasSuffix("list") } == [
+            "--json allow add -- mario rossi", "--json ingest --force -- /docs/a.txt", "--json deny add -- frittata"])
+        #expect(try Event.decode(#"{"event": "value", "value": "frittata", "doc_ids": ["aaaaaaaaaaaaaaaa"]}"#)
+            == .value(Value(value: "frittata", docIds: ["aaaaaaaaaaaaaaaa"])))
     }
 
     @Test func stepWrapsAround() throws {

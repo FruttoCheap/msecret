@@ -257,6 +257,17 @@ def tokens(root: Path, types: list[str]) -> None:
         out(ev, "\t".join([ev["token"], str(len(ev["doc_ids"])), ev["value"] or ""]))
 
 
+def values(root: Path, name: str) -> None:
+    """private/<name>.txt, each value with the documents that publish it in clear."""
+    from mcp_secret import categories
+    from mcp_secret.ingest import _lines, norm
+
+    db = root / "public" / "public.db"
+    vs = list(dict.fromkeys(map(norm, _lines(root / "private" / f"{name}.txt"))))
+    for ev in categories.in_clear(_ro(db) if db.exists() else None, vs):
+        out(ev, "\t".join([ev["value"], *ev["doc_ids"]]))
+
+
 def show(db: Path, doc_id: str) -> None:
     if not db.exists():
         fail("no_index", NO_INDEX)
@@ -472,9 +483,9 @@ def main() -> None:
     sub.add_parser("review", help="a document in clear and what ingest masks in it; "
                    "-: a worker reading doc_ids on stdin").add_argument("doc_id")
     for name, what in (("deny", "always"), ("allow", "never")):
-        p = sub.add_parser(name, help=f"{what} mask a value ({name}.txt)")
-        p.add_argument("action", choices=["add", "remove"])
-        p.add_argument("value")
+        p = sub.add_parser(name, help=f"{what} mask a value ({name}.txt); no action: list them")
+        p.add_argument("action", nargs="?", choices=["add", "remove"])
+        p.add_argument("value", nargs="?")
     p = sub.add_parser("cat", help="add or remove a category of documents")
     p.add_argument("action", choices=["add", "remove"])
     p.add_argument("doc_ids", nargs="+", metavar="doc_id")
@@ -485,7 +496,7 @@ def main() -> None:
     p.add_argument("--set", metavar="NAME", help="set the rule's terms (none: remove it)")
     p.add_argument("terms", nargs="*", help="words, prefix*, or phrases; a document with any of "
                    "them in what the agent sees gets the category")
-    sub.add_parser("tokens", help="the tokens in two documents or more, values in clear"
+    sub.add_parser("tokens", help="every published token, values in clear"
                    ).add_argument("--type", action="append", default=[], help="only this type (repeatable)")
     sub.add_parser("export", help="write the pseudonymized documents to a folder an agent works "
                    "in (Claude Cowork)").add_argument("dir", type=Path)
@@ -502,6 +513,8 @@ def main() -> None:
     args = ap.parse_args()
     if args.cmd == "rules" and args.terms and args.set is None:
         ap.error("rules: terms need --set NAME")
+    if args.cmd in ("deny", "allow") and (args.action is None) != (args.value is None):
+        ap.error(f"{args.cmd}: add|remove <value>, or nothing to list them")
     if args.cmd == "drive" and args.action in ("add", "remove") and not args.arg:
         ap.error(f"drive {args.action}: a folder link or id")
     root = home()
@@ -565,6 +578,8 @@ def main() -> None:
             show(db, args.doc_id)
         elif args.cmd == "review":
             review(root, args.doc_id)
+        elif args.cmd in ("deny", "allow") and args.action is None:
+            values(root, args.cmd)
         elif args.cmd in ("deny", "allow"):
             from mcp_secret.ingest import clean, norm
 

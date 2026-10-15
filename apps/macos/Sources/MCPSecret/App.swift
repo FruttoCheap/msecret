@@ -34,7 +34,8 @@ struct MainView: View {
     @State var selection: Set<String> = []
     @State var guide = false
     @State private var importing = false
-    @State var showGraph = false
+    enum Pane { case documents, graph, values }
+    @State var pane = Pane.documents
     @State private var graph = GraphModel()
 
     var body: some View {
@@ -44,10 +45,15 @@ struct MainView: View {
         } detail: {
             if guide {
                 Guide(importing: $importing) { guide = false }
-            } else if showGraph {
+            } else if pane == .graph {
                 GraphView(model: graph) { id in
                     selection = [id]
-                    showGraph = false
+                    pane = .documents
+                }
+            } else if pane == .values {
+                ValuesView { id in
+                    selection = [id]
+                    pane = .documents
                 }
             } else if selection.count == 1, let id = selection.first {
                 DocumentView(model: DocumentModel(app: app, docId: id)).id(id)
@@ -60,14 +66,15 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 960, minHeight: 600)
-        .onChange(of: selection) { if !selection.isEmpty { showGraph = false } }
+        .onChange(of: selection) { if !selection.isEmpty { pane = .documents } }
         .toolbar {
-            Picker(L("View"), selection: $showGraph) {
-                Label(L("Documents"), systemImage: "doc.text").tag(false)
-                Label(L("Graph"), systemImage: "point.3.connected.trianglepath.dotted").tag(true)
+            Picker(L("View"), selection: $pane) {
+                Label(L("Documents"), systemImage: "doc.text").tag(Pane.documents)
+                Label(L("Graph"), systemImage: "point.3.connected.trianglepath.dotted").tag(Pane.graph)
+                Label(L("Masked Values"), systemImage: "eye.slash").tag(Pane.values)
             }
             .pickerStyle(.segmented)
-            .help(L("Documents one by one, or the graph of what links them."))
+            .help(L("Documents one by one, the graph of what links them, or every value masked and where."))
             Button { importing = true } label: { Label(L("Add Documents…"), systemImage: "plus") }
                 .keyboardShortcut("o")
                 .disabled(app.job != nil)

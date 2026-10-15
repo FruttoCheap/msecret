@@ -190,6 +190,7 @@ enum Event: Equatable, Sendable {
     case desktop(Desktop)
     case rule(Rule)
     case token(Token)
+    case value(Value)
     case exported(Exported)
     case drive(Drive)
     case file(path: String)
@@ -221,6 +222,7 @@ extension Event: Decodable {
         case "desktop": self = .desktop(try Desktop(from: decoder))
         case "rule": self = .rule(try Rule(from: decoder))
         case "token": self = .token(try Token(from: decoder))
+        case "value": self = .value(try Value(from: decoder))
         case "export": self = .exported(try Exported(from: decoder))
         case "drive": self = .drive(try Drive(from: decoder))
         case "file": self = .file(path: try c.decode(String.self, forKey: .path))
@@ -255,6 +257,12 @@ struct Token: Decodable, Equatable, Sendable {
     var token: String
     var type: String
     var value: String?
+    var docIds: [String]
+}
+
+/// A value of `allow` (or `deny`) and the documents that publish it in clear.
+struct Value: Decodable, Equatable, Sendable {
+    var value: String
     var docIds: [String]
 }
 

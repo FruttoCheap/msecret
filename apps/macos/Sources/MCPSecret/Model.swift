@@ -264,15 +264,22 @@ final class AppModel {
     }
 
     /// `deny add` (always mask) or `allow add` (never mask) a value, then the ingest that
-    /// applies it to this document: a plain one for deny (every run sweeps the deny list
-    /// through what is published), `--force` for allow (the file did not change).
-    func decide(_ list: String, _ value: String, path: String) async {
+    /// applies it to these documents: a plain one for deny (every run sweeps the deny list
+    /// through what is published), `--force` for allow (the files did not change).
+    func decide(_ list: String, _ value: String, paths: [String]) async {
         do {
             _ = try await cli.events(list, "add", "--", value)
         } catch {
             return report(error)
         }
-        await ingest([path], force: list == "allow")
+        await ingest(paths, force: list == "allow")
+    }
+
+    /// From the list of values: mask `value` again everywhere (`deny`), or leave it in clear
+    /// (`allow`) in these documents, re-indexed. A missing file keeps what it published.
+    func mask(_ value: String, _ on: Bool, docIds: [String]) async {
+        await decide(on ? "deny" : "allow", value,
+                     paths: docs(Set(docIds)).filter { $0.exists != false }.map(\.path))
     }
 
     /// `review` through one long-lived core process: the models load once, not on every click.
@@ -376,14 +383,14 @@ final class DocumentModel {
     func maskAlways() async {
         let value = selection.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, let path = review?.path else { return }
-        await app.decide("deny", value, path: path)
+        await app.decide("deny", value, paths: [path])
         selection = ""
         await load()
     }
 
     func dontMask() async {
         guard let span = selectedSpan, let review else { return }
-        await app.decide("allow", review.value(span), path: review.path)
+        await app.decide("allow", review.value(span), paths: [review.path])
         selected = nil
         await load()
     }
@@ -406,6 +413,7 @@ extension Event {
     var desktop: Desktop? { if case .desktop(let d) = self { d } else { nil } }
     var rule: Rule? { if case .rule(let r) = self { r } else { nil } }
     var token: Token? { if case .token(let t) = self { t } else { nil } }
+    var value: Value? { if case .value(let v) = self { v } else { nil } }
     var exported: Exported? { if case .exported(let e) = self { e } else { nil } }
     var drive: Drive? { if case .drive(let d) = self { d } else { nil } }
 }

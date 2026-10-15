@@ -44,8 +44,10 @@ func screenshots() async throws {
             let tag = (original.string as NSString).range(of: "[PERSONA_")
             original.setSelectedRange(NSRange(location: tag.location - 3, length: 0))
         }
-        await snap(MainView(showGraph: true).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
+        await snap(MainView(pane: .graph).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
                    to: out.appending(path: "graph-\(mode).png"))
+        await snap(MainView(pane: .values).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
+                   to: out.appending(path: "values-\(mode).png"))
         await snap(SettingsView().environment(graphed), size: NSSize(width: 540, height: 860), dark: dark,
                    to: out.appending(path: "settings-\(mode).png"))
     }

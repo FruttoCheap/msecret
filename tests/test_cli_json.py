@@ -91,6 +91,9 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
     assert (deny.read_text(), allow.read_text()) == ("", "frittata\n")
     run(env, "ingest", "--force", str(docs / "b.txt"))
     assert "frittata" in text(env, b["doc_id"])
+    assert run(env, "allow") == [{"event": "value", "value": "frittata", "doc_ids": [b["doc_id"]]}]
+    assert run(env, "deny") == []
+    assert run(env, "allow", "add", code=2) == []
     assert run(env, "allow", "remove", "frittata")[0]["changed"] is True
     assert run(env, "allow", "remove", "frittata")[0]["changed"] is False
     assert run(env, "allow", "add", " ", code=1)[0]["error"] == "bad_value"
@@ -229,14 +232,17 @@ def test_categories_and_tokens(tmp_path):
     assert [d["categories"] for d in run(env, "list")] == [["Clienti"], ["Urgente", "Verbali"]]
     assert run(env, "rules", "--set", "Pagamenti") == [{"event": "rule", "name": "Altro", "terms": ["x"]}]
 
-    # tokens: those in two documents or more, value in clear, the documents; filtered by type
+    # tokens: every one published, in the most documents first, value in clear; filtered by type
     (docs / "Clienti" / "c.txt").write_text("Saldo su IBAN IT60X0542811101000000123456.\n")
     run(env, "ingest", str(docs))
     c = next(d for d in run(env, "list") if d["path"].endswith("c.txt"))
-    assert [(t["event"], t["type"], t["value"], t["doc_ids"]) for t in run(env, "tokens")] == [
+    toks = run(env, "tokens")
+    assert [(t["event"], t["type"], t["value"], t["doc_ids"]) for t in toks[:1]] == [
         ("token", "IBAN", "it60x0542811101000000123456", sorted([a["doc_id"], c["doc_id"]]))]
-    assert run(env, "tokens", "--type", "IBAN") == run(env, "tokens")
-    assert run(env, "tokens", "--type", "PERSONA") == []
+    assert run(env, "tokens", "--type", "IBAN") == toks[:1]
+    assert [(t["value"], t["doc_ids"]) for t in run(env, "tokens", "--type", "CF")] == [
+        ("rssmra80a01h501u", [a["doc_id"]])]  # in one document: listed too
+    assert {"PERSONA", "TELEFONO"} <= {t["type"] for t in toks}
 
     # a document gone takes its decisions along
     (docs / "Verbali" / "b.txt").unlink()

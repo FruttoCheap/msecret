@@ -173,7 +173,7 @@ event (`no_index`, `no_document`, `failed`), in order, in well under a second. E
 it; it exits 0 when stdin closes. Send the next id after reading the previous answer, or keep
 the ids in order: answers carry no request id.
 
-### deny / allow `add|remove <value>`
+### deny / allow `[add|remove <value>]`
 
 `deny`: mask this value everywhere, always. `allow`: never mask it. The value is normalized as
 ingest reads the lists (Unicode NFKC, whitespace collapsed, lowercase) and stored in
@@ -186,6 +186,14 @@ from the other: the latest decision wins.
 
 `changed` is false when the value was already there (`add`) or was not (`remove`). Nothing is
 re-indexed: follow with `ingest`.
+
+Without an action, the list's values, one line each, in file order, each with the documents
+that publish it in clear (matched as ingest masks: whole words, any case). `doc_ids` is sorted,
+`[]` before the first `ingest`.
+
+```json
+{"event": "value", "value": "mario rossi", "doc_ids": ["3f9c0a1b2c3d4e5f"]}
+```
 
 - After `deny add`: `ingest` of any path (even an unchanged file) masks the value in every
   published document.
@@ -241,9 +249,9 @@ matched case- and accent-insensitively; commas in an argument split terms.
 
 ### tokens `[--type <TYPE>]...`
 
-Every token published in two documents or more, in the most documents first (ties by token),
-with its value in clear: what links documents in the graph. `--type` keeps only those types.
-Reads every chunk.
+Every token published (in chunks or document names), in the most documents first (ties by
+token), with its value in clear: what ingest masks, and, in two documents or more, what links
+documents in the graph. `--type` keeps only those types. Reads every chunk.
 
 ```json
 {"event": "token", "token": "[PERSONA_1]", "type": "PERSONA", "value": "mario rossi", "doc_ids": ["3f9c0a1b2c3d4e5f", "a1b2c3d4e5f60718"]}
@@ -367,7 +375,8 @@ during an ingest.
 
 ## Privacy
 
-`ingest`, `list`, `review`, `tokens` and `drive sync` print paths, document text and values in clear. A UI keeps them in
+`ingest`, `list`, `review`, `tokens`, `deny`/`allow` without an action and `drive sync` print
+paths, document text and values in clear. A UI keeps them in
 memory only: no logs, caches, temporary files or saved window state. Do not run these commands
 through an agent whose output leaves the machine. `show` prints only what the agent sees, and
 `export` writes only that: its folder is as public as `public.db`.
