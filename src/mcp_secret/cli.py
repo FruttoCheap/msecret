@@ -3,20 +3,22 @@
 import argparse
 import json
 import os
-import pwd
 import re
 import shutil
 import signal
 import site
 import socket
 import sqlite3
+import subprocess
 import sys
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 from typing import NoReturn
 
 SANDBOX = "/usr/bin/sandbox-exec"
-DEFAULT_HOME = "~/Library/Application Support/mcp-secret"
+DEFAULT_HOME = (os.environ["LOCALAPPDATA"] + "/mcp-secret" if sys.platform == "win32"  # not roaming
+                else "~/Library/Application Support/mcp-secret")
 NO_INDEX = "no index yet: run `mcp-secret ingest <path>` first"
 _json = None  # --json: writes one JSON object per line to the real stdout
 
@@ -43,6 +45,8 @@ def profile(root: Path | None = None, writable: Path | None = None) -> str:
     sbpl = "(version 1)(allow default)(deny network*)"
     if root is None:
         return sbpl
+    import pwd  # macOS only; Windows boxes with winbox
+
     # the account's home, not $HOME: whoever launches serve sets the environment
     pub, me = root / "public", Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
     # not sys.path: it may hold the cwd or PYTHONPATH, i.e. anything under $HOME
@@ -89,12 +93,62 @@ def _connect_out() -> None:
         s.connect(("127.0.0.1", 9))
 
 
+def _opens(args: argparse.Namespace, root: Path, writable: Path | None) -> tuple[list, list]:
+    """Windows: what this command's box may read and write. Everything else is closed."""
+    from mcp_secret import winbox
+
+    run = winbox.runtime()
+    if args.cmd in ("serve", "export"):
+        if writable:
+            writable.mkdir(parents=True, exist_ok=True)  # an ACL needs the folder to exist
+        return [root / "public", *run], [writable] if writable else []
+    from docling.datamodel.settings import settings
+    from huggingface_hub.constants import HF_HUB_CACHE
+
+    models = [HF_HUB_CACHE, settings.cache_dir]
+    if args.cmd == "ingest":
+        return [*(p.expanduser().resolve() for p in args.paths), *run, *models], [root]
+    priv = root / "private" / "private.db"  # review reads the originals where they are
+    dirs = {str(Path(p).parent) for (p,) in _ro(priv).execute("SELECT path FROM docs")} if priv.exists() else ()
+    return [root, *dirs, *run, *models], []
+
+
+def _absolute(argv: list[str]) -> list[str]:
+    """ingest's paths against our cwd: the box starts in its own folder."""
+    i = argv.index("ingest") + 1
+    return [*argv[:i], *(t if t == "--force" else str(Path(t).expanduser().resolve()) for t in argv[i:])]
+
+
+def _become(argv: list[str]) -> NoReturn:
+    """Replace this process with `argv`. Windows has no exec: run it and exit with its code."""
+    if sys.platform == "win32":
+        sys.exit(subprocess.run(argv, check=False).returncode)
+    os.execv(argv[0], argv)
+
+
 def _sandboxed(args: argparse.Namespace, root: Path | None, *must_fail, writable: Path | None = None) -> None:
-    """Re-exec under sandbox-exec with profile(root, writable), then prove it. Fails closed."""
+    """Re-exec under sandbox-exec (Windows: an AppContainer, winbox) with profile(root, writable),
+    then prove it. Fails closed."""
+    if not args.sandboxed and sys.platform == "win32":
+        from mcp_secret import winbox
+
+        root = home()
+        root.mkdir(parents=True, exist_ok=True)
+        argv = ["-m", "mcp_secret.cli", "--sandboxed", *(_absolute(sys.argv[1:]) if args.cmd == "ingest" else sys.argv[1:])]
+        read, write = _opens(args, root, writable)
+        sys.exit(winbox.run([sys.executable, "-I", "-B", *argv], args.cmd, root / f".winbox-{args.cmd}.json",
+                            read, write))
     if not args.sandboxed:  # exec raises if sandbox-exec is missing; a bad profile exits non-zero
         cmd = sandbox_cmd(profile(root, writable), "-m", "mcp_secret.cli", "--sandboxed", *sys.argv[1:])
         os.execv(SANDBOX, cmd)
-    if not all(_denied(op) for op in (_connect_out, *must_fail)):
+    if sys.platform == "win32":  # the token, not a socket: see winbox.contained
+        from mcp_secret import winbox
+
+        os.devnull = winbox.devnull()  # before torch is imported: its dill opens NUL, which the box cannot
+        boxed = winbox.contained() and all(_denied(op) for op in must_fail)
+    else:
+        boxed = all(_denied(op) for op in (_connect_out, *must_fail))
+    if not boxed:
         sys.exit("mcp-secret: sandbox not active, refusing to run")
 
 
@@ -167,7 +221,7 @@ def status(root: Path) -> None:
         docs = sqlite3.connect(priv).execute("SELECT count(*) FROM docs").fetchone()[0]
         chunks = sqlite3.connect(pub).execute("SELECT count(*) FROM chunks").fetchone()[0]
     ev = {"event": "status", "root": str(root), "models": _models(), "index": index, "docs": docs,
-          "chunks": chunks}
+          "chunks": chunks, "version": version("mcp-secret")}
     out(ev, "\n".join(f"{k}\t{v}" for k, v in list(ev.items())[1:]))
 
 
@@ -371,6 +425,29 @@ def edit(priv: Path, name: str, value: str, add: bool) -> bool:
     return True
 
 
+def override(root: Path, doc_id: str, cmd: str, action: str, value: str) -> None:
+    """`deny|allow add|remove --doc`: mask a value in one document only, or leave it in clear
+    there. The latest decision wins; that document's next ingest (`--force`) applies it."""
+    from mcp_secret.ingest import OVERRIDES, clean, norm
+
+    if not (v := norm(clean(value))):
+        fail("bad_value", "empty value")
+    con, _ = _index(root, write=True)
+    if not con.execute("SELECT 1 FROM docs WHERE id = ?", (doc_id,)).fetchone():
+        fail("no_document", f"no document {doc_id}")
+    mask = cmd == "deny"
+    with con:
+        con.execute(OVERRIDES)  # an index from before overrides
+        old = con.execute("SELECT mask FROM overrides WHERE doc_id = ? AND value = ?", (doc_id, v)).fetchone()
+        if action == "add":
+            changed = old != (mask,)
+            con.execute("INSERT OR REPLACE INTO overrides VALUES (?, ?, ?)", (doc_id, v, mask))
+        else:
+            changed = old == (mask,)
+            con.execute("DELETE FROM overrides WHERE doc_id = ? AND value = ? AND mask = ?", (doc_id, v, mask))
+    out({"event": cmd, "action": action, "doc_id": doc_id, "changed": changed})
+
+
 def _claude() -> tuple[Path, Path]:
     """Claude Desktop's config file and the log it keeps of the mcp-secret server."""
     log = "mcp-server-mcp-secret.log"
@@ -453,8 +530,8 @@ def drive_cmd(priv: Path, action: str, arg: str | None) -> None:
             base.mkdir(exist_ok=True)  # no folders yet: ingest still needs one to read
             if _json:
                 os.dup2(_json.fd, 1)
-            os.execv(sys.executable, [sys.executable, "-m", "mcp_secret.cli",
-                                      *(["--json"] if _json else []), "ingest", str(base)])
+            _become([sys.executable, "-m", "mcp_secret.cli",
+                     *(["--json"] if _json else []), "ingest", str(base)])
     except drive.Error as e:
         fail(*e.args)
     if action != "status":
@@ -486,6 +563,7 @@ def main() -> None:
         p = sub.add_parser(name, help=f"{what} mask a value ({name}.txt); no action: list them")
         p.add_argument("action", nargs="?", choices=["add", "remove"])
         p.add_argument("value", nargs="?")
+        p.add_argument("--doc", metavar="DOC_ID", help=f"{what} mask it in this document only")
     p = sub.add_parser("cat", help="add or remove a category of documents")
     p.add_argument("action", choices=["add", "remove"])
     p.add_argument("doc_ids", nargs="+", metavar="doc_id")
@@ -562,7 +640,7 @@ def main() -> None:
             out({"event": "start", "steps": 2})
             out({"event": "step", "step": 1, "name": "docling"})
             download_models(with_code_formula=False, with_picture_classifier=False,
-                            with_rapidocr=False)
+                            with_rapidocr=sys.platform != "darwin")  # macOS has OcrMac
             out({"event": "step", "step": 2, "name": "detector"})
             pii.fetch_models()
             out({"event": "done"})
@@ -578,6 +656,10 @@ def main() -> None:
             show(db, args.doc_id)
         elif args.cmd == "review":
             review(root, args.doc_id)
+        elif args.cmd in ("deny", "allow") and args.doc:
+            if args.action is None:
+                ap.error("--doc needs add or remove")
+            override(root, args.doc, args.cmd, args.action, args.value or "")
         elif args.cmd in ("deny", "allow") and args.action is None:
             values(root, args.cmd)
         elif args.cmd in ("deny", "allow"):

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>local.mcp-secret</string>
+	<string>it.clait.mcp-secret</string>
 	<key>CFBundleName</key>
 	<string>mcp-secret</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -13,5 +13,7 @@
 		<string>en</string>
 		<string>it</string>
 	</array>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 </dict>
 </plist>

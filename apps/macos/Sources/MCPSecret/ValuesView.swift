@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Every value ingest masks (`tokens`) and every value left in clear by choice (`allow`), each
-/// with the documents it is in. Unchecking one publishes it in clear there; checking one masks
-/// it again, everywhere.
+/// with the documents it is in. Unchecking one leaves it in clear there, checking one masks it
+/// again everywhere: once you choose Re-index Now, all of them in one run.
 struct ValuesView: View {
     @Environment(AppModel.self) private var app
     /// Opens a document.
@@ -32,8 +32,30 @@ struct ValuesView: View {
                                        description: Text(L("Index some documents first.")))
             }
         }
+        .safeAreaInset(edge: .bottom) { if !app.decisions.isEmpty { apply } }
         .navigationTitle(L("Masked Values"))
         .task(id: app.docs) { await load() }
+    }
+
+    /// The decisions waiting for a re-index.
+    var apply: some View {
+        HStack {
+            Image(systemName: "arrow.triangle.2.circlepath").accessibilityHidden(true)
+            Text(L("\(app.decisions.count) changes not applied yet"))
+            Spacer()
+            Button(L("Discard")) { app.decisions = [:] }
+            Button(L("Re-index Now")) {
+                Task {
+                    await app.applyDecisions()
+                    await load()
+                }
+            }
+            .help(L("A change reaches the agent only once its documents are indexed again: the text the agent sees is rebuilt from the originals."))
+            .disabled(app.job != nil)
+        }
+        .padding(10)
+        .background(Color.orange.opacity(0.15))
+        .background(.bar)  // opaque: the list scrolls under it
     }
 
     func shown(_ s: String) -> Bool { search.isEmpty || s.localizedCaseInsensitiveContains(search) }
@@ -59,18 +81,18 @@ struct ValuesView: View {
             }
         } label: {
             HStack {
-                Toggle(L("Mask"), isOn: Binding(get: { masked }, set: { on in
+                let decided = value.flatMap { app.decisions[$0] }
+                Toggle(L("Mask"), isOn: Binding(get: { decided?.mask ?? masked }, set: { on in
                     guard let value else { return }
-                    Task {
-                        await app.mask(value, on, docIds: docIds)
-                        await load()
-                    }
+                    app.decisions[value] = on == masked ? nil : .init(mask: on, docIds: docIds)  // back: no change
                 }))
                 .labelsHidden()
-                .disabled(app.job != nil || value == nil)  // no value known: a token-shaped text
-                Image(systemName: "circle.fill")
+                .disabled(value == nil)  // no value known: a token-shaped text
+                Image(systemName: decided == nil ? "circle.fill" : "arrow.triangle.2.circlepath")
                     .foregroundStyle(Color(nsColor: type.map(Highlight.color) ?? .systemGray))
-                    .accessibilityHidden(true)
+                    .help(decided == nil ? "" : L("Applied at the next re-index"))
+                    .accessibilityLabel(L("Applied at the next re-index"))
+                    .accessibilityHidden(decided == nil)
                 Text(verbatim: value ?? token ?? "").lineLimit(1).truncationMode(.middle)
                 if let token { Text(verbatim: token).font(.caption.monospaced()).foregroundStyle(.secondary) }
                 Spacer()

@@ -7,6 +7,8 @@ struct DocumentView: View {
     @Environment(AppModel.self) private var app
     @State var model: DocumentModel
     @State private var confirm = false
+    /// What the confirmation is for: this document only, or every one.
+    @State private var here = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,7 +62,18 @@ struct DocumentView: View {
         let token = model.selectedSpan?.token
         let (text, hits) = Highlight.agent(model.chunks, token: token)
         return VStack(alignment: .leading, spacing: 8) {
-            Text(L("What the agent sees")).font(.headline)
+            HStack {
+                Text(L("What the agent sees")).font(.headline)
+                Spacer()
+                // the file itself, to drag out; Save… does the same without a drag
+                Label { Text(verbatim: "\(model.docId).md") } icon: { Image(systemName: "doc.text") }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(.quaternary, in: .rect(cornerRadius: 6))
+                    .draggable(Anonymized(cli: app.cli, docId: model.docId))
+                    .help(L("Drag this file to a folder or another app: it holds only what the agent sees."))
+                Button(L("Save…")) { if let dir = chooseFolder() { Task { await app.export([model.docId], to: dir) } } }
+                    .controlSize(.small).disabled(app.job != nil)
+            }
             Text(token.map { L("Occurrences of \($0): \(hits.count)") } ?? L("Select a highlighted value to find its token here."))
                 .font(.callout).foregroundStyle(.secondary)
             TextPane(text: text, focus: hits.isEmpty ? nil : hits[min(model.occurrence, hits.count - 1)],
@@ -81,11 +94,13 @@ struct DocumentView: View {
             if let span = model.selectedSpan {
                 Text(verbatim: "\(span.token)  \(review.value(span))").lineLimit(1).truncationMode(.middle)
                 Spacer()
-                Button(L("Don't Mask…")) { confirm = true }
+                Button(L("Don't Mask Here…")) { (here, confirm) = (true, true) }
+                Button(L("Never Mask…")) { (here, confirm) = (false, true) }
                     .keyboardShortcut("u", modifiers: [.command, .shift])
             } else if !model.selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(verbatim: "“\(model.selection)”").lineLimit(1).truncationMode(.middle)
                 Spacer()
+                Button(L("Mask Here")) { Task { await model.maskAlways(here: true) } }
                 Button(L("Always Mask")) { Task { await model.maskAlways() } }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
             } else {
@@ -98,9 +113,10 @@ struct DocumentView: View {
         .disabled(app.job != nil || model.loading)
         .padding(10)
         .confirmationDialog(L("Publish this value in clear?"), isPresented: $confirm) {
-            Button(L("Don't Mask")) { Task { await model.dontMask() } }
+            Button(L("Don't Mask")) { Task { await model.dontMask(here: here) } }
         } message: {
-            Text(L("“\(value)” becomes visible to the agent in this document. Other documents keep it masked until you re-index them (Re-index All)."))
+            Text(here ? L("“\(value)” becomes visible to the agent in this document only.")
+                      : L("“\(value)” becomes visible to the agent in this document. Other documents keep it masked until you re-index them (Re-index All)."))
         }
     }
 

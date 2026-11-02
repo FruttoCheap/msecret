@@ -420,3 +420,29 @@ def test_public_names_and_common_nouns_stay_in_clear(tmp_path):
     assert leaks(out, "Messina", "Pontecuti") == []  # a surname that is a city too, a small town
     assert "Roma" not in published(tmp_path, deny="Roma\n")  # deny.txt beats public.txt
     assert not ingest._public("ORG", "ferrara s.r.l.", ingest.PUBLIC, {})  # a firm, not the city
+
+
+def test_common_italian_phrases_and_roles_stay_in_clear(tmp_path):
+    phrases = [
+        "Sono andato a casa dopo la riunione.",
+        "Ho fatto una telefonata al responsabile del servizio clienti.",
+        "State attenti al cane nel cortile.",
+        "Chi ha parlato con lui ieri pomeriggio?",
+        "Molti clienti e tutti gli utenti hanno confermato la ricezione.",
+        "Oggi sono andato in banca per chiedere informazioni sul mutuo casa.",
+        "Ho parlato con il direttore dell agenzia e con il tecnico della ditta.",
+        "La presente per comunicare la variazione di residenza.",
+        "Gentile Avvocato, resto in attesa di un suo riscontro.",
+        "Il dottore mi ha prescritto una visita specialistica di controllo.",
+        "Il sindaco e la giunta comunale hanno approvato la delibera di giunta.",
+    ]
+    for p in phrases:
+        spans = pii.detect(p)
+        assert spans == [], f"Unexpected detection in {p!r}: {[(s.type, p[s.start:s.end]) for s in spans]}"
+
+    # Test that valid names in greetings and after titles are still properly masked
+    t = "Gentile Mario Rossi, le confermo l'appuntamento con l'Avv. Bianchi e il Dott. Verdi.\n"
+    out = published(tmp_path, {"test.txt": t})
+    assert leaks(out, "Mario Rossi", "Bianchi", "Verdi") == []
+    for word in ["Gentile", "Avv.", "Dott."]:
+        assert word in out

@@ -12,7 +12,8 @@ mcp-secret --json <command> [arguments]
 - Executable: `<repo>/.venv/bin/mcp-secret` (Windows: `<repo>\.venv\Scripts\mcp-secret.exe`).
 - `--json` goes before the command.
 - Data root: the `MCP_SECRET_HOME` environment variable, absolute; unset means the default
-  (`~/Library/Application Support/mcp-secret`). `status` reports the one in use.
+  (`~/Library/Application Support/mcp-secret`; Windows: `%LOCALAPPDATA%\mcp-secret`). `status`
+  reports the one in use.
 - A value that may start with `-` goes after `--`: `deny add -- "-value"`.
 - stdin is not read.
 
@@ -63,7 +64,7 @@ mcp-secret --json <command> [arguments]
 Data root, models, index size. One line.
 
 ```json
-{"event": "status", "root": "/Users/me/Library/Application Support/mcp-secret", "models": true, "index": true, "docs": 30, "chunks": 41}
+{"event": "status", "root": "/Users/me/Library/Application Support/mcp-secret", "models": true, "index": true, "docs": 30, "chunks": 41, "version": "0.1.0"}
 ```
 
 | Field | Type | |
@@ -72,6 +73,7 @@ Data root, models, index size. One line.
 | `models` | bool | detector and Docling models are in the local caches (`models` downloads them) |
 | `index` | bool | an `ingest` has run on this data root |
 | `docs`, `chunks` | int | indexed documents and published chunks |
+| `version` | string | the installed core's version; the app compares it with the one it ships |
 
 `status` also recovers the index after an ingest killed hard (see Cancelling): call it at startup.
 
@@ -94,7 +96,10 @@ Downloads the models; with `drive`, the only command that uses the network. Run 
 
 Indexes files and folders (recursively: PDF, DOCX, XLSX, PPTX, HTML, MD, images, EML, TXT).
 An unchanged file (same sha256) is skipped unless `--force`: use it after `allow add`, which
-only applies to documents indexed afterwards. Every run first applies `deny.txt` to everything
+only applies to documents indexed afterwards. `--force` parses and masks the file again but
+reuses what the detector found in it while the parsed text and the detector (`pii.py`) are the
+same: re-applying `allow.txt` or `public.txt` costs the parsing only (Docling for PDF, DOCX and
+images; next to nothing for TXT). Every run first applies `deny.txt` to everything
 already published, and forgets documents whose file disappeared from an ingested folder.
 
 ```json
@@ -148,8 +153,8 @@ What the agent sees: the published chunks, in order.
 The document in clear as ingest reads it now, and what ingest masks in it. It re-parses the
 file with the ingest pipeline (parse, normalization, detection, `deny.txt`, `allow.txt`,
 `public.txt`, masking) and writes nothing. Detection, most of the time, is skipped while the
-parsed text is the one indexed: the spans found then are reused (`ingest --force` refreshes
-them). One line.
+parsed text is the one indexed: the spans found then are reused (a new `pii.py` detects
+again). One line.
 
 ```json
 {"event": "review", "doc_id": "3f9c0a1b2c3d4e5f", "path": "/Users/me/docs/contratto.txt", "exists": true, "stale": false, "text": "contratto.txt\n\nTra Mario Rossi (CF RSSMRA80A01H501U) e...", "spans": [{"start": 19, "end": 30, "type": "PERSONA", "token": "[PERSONA_1]"}, {"start": 35, "end": 51, "type": "CF", "token": "[CF_1]"}]}
@@ -199,6 +204,24 @@ that publish it in clear (matched as ingest masks: whole words, any case). `doc_
   published document.
 - After `allow add`: `ingest --force` of a document publishes the value in clear there; other
   documents keep it masked until they are re-indexed with `--force`.
+
+### deny / allow `add|remove --doc <doc_id> -- <value>`
+
+The same decision for one document only: `deny` masks the value in that document, `allow` leaves
+it in clear there. Other documents are not touched, whatever their lists say, and a global
+`deny` (its sweep of every run included) does not mask an `allow --doc` value in that document.
+The value is normalized as above; `add` replaces the document's earlier decision on it (the
+latest wins), `remove` takes back only a decision of the same kind. Kept in `private/private.db`;
+`forget` drops them. Nothing is re-indexed: follow with `ingest --force <path>`.
+
+```json
+{"event": "deny", "action": "add", "doc_id": "3f9c0a1b2c3d4e5f", "changed": true}
+```
+
+A value masked this way gets the token it already has, or a new one that no other document
+shares; it joins the global values (and is masked everywhere on the next ingest) once a detector
+or `deny add` learns it. Errors: `no_index`, `no_document` (unknown `doc_id`), `bad_value`
+(empty value). No action with `--doc` is a usage error (exit 2).
 
 ## Categories
 

@@ -31,23 +31,28 @@ func screenshots() async throws {
         // first run: the guide, and the whole fixtures folder indexing in the sidebar
         let busy = AppModel(cliPath: CLI.defaultPath, dataRoot: root.appending(path: "busy-\(mode)").path)
         let indexing = Task { await busy.ingest([repo.appending(path: "fixtures/out").path]) }
-        await snap(MainView().environment(busy), size: NSSize(width: 1180, height: 760), dark: dark,
+        await snap(MainView(advanced: true).environment(busy), size: NSSize(width: 1180, height: 760), dark: dark,
                    to: out.appending(path: "progress-\(mode).png"))
         busy.cancel()
         await indexing.value
         await snap(MainView().environment(empty), size: NSSize(width: 1180, height: 760), dark: dark,
                    to: out.appending(path: "guide-\(mode).png"))
-        await snap(MainView(selection: [id]).environment(app), size: NSSize(width: 1380, height: 820), dark: dark,
+        await snap(MainView(selection: [id], advanced: true).environment(app), size: NSSize(width: 1380, height: 820), dark: dark,
                    to: out.appending(path: "document-\(mode).png")) { window in
             // click into the third masked value of the original, as a user would
             let original = try #require(window.contentView.flatMap { textViews(in: $0).first })
             let tag = (original.string as NSString).range(of: "[PERSONA_")
             original.setSelectedRange(NSRange(location: tag.location - 3, length: 0))
         }
-        await snap(MainView(pane: .graph).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
+        app.current = id  // the window as it opens: one file in, its anonymized text out
+        await snap(MainView().environment(app), size: NSSize(width: 1180, height: 760), dark: dark,
+                   to: out.appending(path: "simple-\(mode).png"))
+        await snap(MainView(advanced: true, pane: .graph).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
                    to: out.appending(path: "graph-\(mode).png"))
-        await snap(MainView(pane: .values).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
+        graphed.decisions = ["x": .init(mask: false, docIds: [])]  // the bar of changes to apply
+        await snap(MainView(advanced: true, pane: .values).environment(graphed), size: NSSize(width: 1380, height: 820), dark: dark,
                    to: out.appending(path: "values-\(mode).png"))
+        graphed.decisions = [:]
         await snap(SettingsView().environment(graphed), size: NSSize(width: 540, height: 860), dark: dark,
                    to: out.appending(path: "settings-\(mode).png"))
     }

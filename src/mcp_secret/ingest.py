@@ -7,10 +7,12 @@ import functools
 import hashlib
 import io
 import json
+import os
 import re
 import secrets
 import sqlite3
 import sys
+import traceback
 import unicodedata
 from pathlib import Path
 
@@ -26,6 +28,13 @@ DETECTED = ("CREATE TABLE IF NOT EXISTS detected(doc_id TEXT PRIMARY KEY, text_s
 # rule or the folder that gives it again does not bring it back).
 CATS = ("CREATE TABLE IF NOT EXISTS cats(doc_id TEXT NOT NULL, name TEXT NOT NULL, "
         "removed INTEGER NOT NULL, PRIMARY KEY(doc_id, name))")
+# Decisions for one document (`deny|allow add --doc`): mask = 1 masks the value there, 0 leaves it
+# in clear there. The latest decision wins.
+OVERRIDES = ("CREATE TABLE IF NOT EXISTS overrides(doc_id TEXT NOT NULL, value TEXT NOT NULL, "
+             "mask INTEGER NOT NULL, PRIMARY KEY(doc_id, value))")
+# Entities learned for one document only: no sweep carries them to the others, until a detector or
+# deny.txt learns the value for all (_token).
+LOCAL = "CREATE TABLE IF NOT EXISTS local(value TEXT PRIMARY KEY)"
 # Rollback journals (not WAL) make a transaction over ATTACHed files atomic (super-journal).
 SCHEMA = f"""
 PRAGMA main.journal_mode = DELETE;
@@ -34,6 +43,8 @@ CREATE TABLE IF NOT EXISTS docs(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, 
 CREATE TABLE IF NOT EXISTS entities(type TEXT NOT NULL, value TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL);
 {DETECTED};
 {CATS};
+{OVERRIDES};
+{LOCAL};
 CREATE VIRTUAL TABLE IF NOT EXISTS pub.chunks
     USING fts5(doc_id UNINDEXED, seq UNINDEXED, text, tokenize="unicode61 tokenchars '_'");
 CREATE TABLE IF NOT EXISTS pub.names(doc_id TEXT PRIMARY KEY, name TEXT NOT NULL);
@@ -49,12 +60,20 @@ _NOISE = re.compile(r"(?i)\d{1,3}|persona|org|luogo|indirizzo|cf|piva|iban|e-?ma
 @functools.cache
 def _converter():
     from docling.datamodel.base_models import InputFormat
-    from docling.datamodel.pipeline_options import OcrMacOptions, PdfPipelineOptions
+    from docling.datamodel.pipeline_options import (
+        OcrMacOptions,
+        PdfPipelineOptions,
+        RapidOcrOptions,
+    )
     from docling.datamodel.settings import settings
     from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
 
+    # OcrMac is macOS only. ponytail: RapidOCR runs one language, Italian; its recognizer also
+    # reads English words. Check on Italian scans before shipping Windows.
+    ocr = (OcrMacOptions(lang=["it-IT", "en-US"]) if sys.platform == "darwin"
+           else RapidOcrOptions(lang=["iso:it"]))
     opts = PdfPipelineOptions(artifacts_path=settings.cache_dir / "models",  # `mcp-secret models`
-                              ocr_options=OcrMacOptions(lang=["it-IT", "en-US"]))
+                              ocr_options=ocr)
     return DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts),
                                              InputFormat.IMAGE: ImageFormatOption(pipeline_options=opts)})
 
@@ -158,15 +177,23 @@ def _lookup(table: dict, m: re.Match) -> str:
     return table.get(norm(m[0])) or next(t for v, t in table.items() if _pattern([v]).fullmatch(m[0]))
 
 
-def _token(con: sqlite3.Connection, type_: str, value: str, new: dict) -> str:
-    """Same normalized value -> same token, forever. New values are added to `new`."""
+def _token(con: sqlite3.Connection, type_: str, value: str, new: dict, local: bool = False) -> str:
+    """Same normalized value -> same token, forever. New values are added to `new`, so the sweeps
+    mask them in every document. A `local` one (masked in a single document) is not, and stays
+    out of the sweeps until a later non-local call learns it: then it joins `new`."""
     v = norm(value)
     row = con.execute("SELECT token FROM entities WHERE value = ?", (v,)).fetchone()
     if row:
+        if not local and con.execute("DELETE FROM local WHERE value = ?", (v,)).rowcount:
+            new[v] = row[0]
         return row[0]
     n = con.execute("SELECT count(*) FROM entities WHERE type = ?", (type_,)).fetchone()[0]
-    new[v] = token = f"[{type_}_{n + 1}]"
+    token = f"[{type_}_{n + 1}]"
     con.execute("INSERT INTO entities VALUES (?, ?, ?)", (type_, v, token))
+    if local:
+        con.execute("INSERT INTO local VALUES (?)", (v,))
+    else:
+        new[v] = token
     return token
 
 
@@ -192,25 +219,36 @@ def _apply(text: str, cands: list[tuple[int, int, str]]) -> str:
 
 
 def masks(con: sqlite3.Connection, text: str, spans: list, allow: set[str], public: set[str],
-          new: dict) -> list[list]:
+          new: dict, doc_id: str | None = None) -> list[list]:
     """What becomes a [TYPE_N] token in `text`, as _merge()d [start, end, token]: detected spans
     plus every known value (sweep). A one-word name that is a word of a full name in this text
     ("Rossi" after "Mario Rossi") takes that name's token and is no entity: swept through every
     document, the surname Costa would mask coasts. A public ORG or LUOGO stays in clear, unless
-    it is such a word ("Mario Messina", then "Messina")."""
+    it is such a word ("Mario Messina", then "Messina"). The decisions for this one document
+    (`overrides`) come last: a value left in clear there, a value masked there only."""
+    here = dict(con.execute("SELECT value, mask FROM overrides WHERE doc_id = ?", (doc_id,)))
+    allow = allow | {v for v, mask in here.items() if not mask}
     keep = [(s, v) for s in spans
-            if norm(v := text[s.start:s.end]) not in allow and not _NOISE.fullmatch(v)]
+            if (nv := norm(v := text[s.start:s.end].strip(" _-\t\n[]"))) not in allow and not _NOISE.fullmatch(v)
+            and nv not in pii.ROLES
+            and pii._clean_val(nv) not in pii.ROLES]
     full = {}  # ponytail: two full names sharing a word, the lone word takes the last one's token
     for s, v in keep:
         if s.type == "PERSONA" and len(words := norm(v).split()) > 1:
-            full.update(dict.fromkeys(words, _token(con, s.type, v, new)))
+            valid_words = [w for w in words if w not in pii.ROLES and len(w) >= 3]
+            if valid_words:
+                full.update(dict.fromkeys(valid_words, _token(con, s.type, v, new)))
     keep = [(s, v) for s, v in keep if not _public(s.type, norm(v), public, full)]
     cands = [(s.start, s.end, (s.type == "PERSONA" and full.get(norm(v))) or _token(con, s.type, v, new))
              for s, v in keep]
-    known = {v: t for ty, v, t in con.execute("SELECT type, value, token FROM entities")
-             if v not in allow and not _public(ty, v, public, full)}
+    known = {v: t for ty, v, t in con.execute("SELECT type, value, token FROM entities "
+                                              "WHERE value NOT IN (SELECT value FROM local)")
+             if v not in allow and not _public(ty, v, public, full) and v not in pii.ROLES
+             and pii._clean_val(v) not in pii.ROLES}
     if known:
         cands += [(m.start(), m.end(), _lookup(known, m)) for m in _hits(_pattern(known), text)]
+    if mine := {v: _token(con, "PERSONA", v, new, local=True) for v, mask in here.items() if mask}:
+        cands += [(m.start(), m.end(), _lookup(mine, m)) for m in _hits(_pattern(mine), text)]
     return _merge(cands)
 
 
@@ -221,20 +259,27 @@ def sweep(con: sqlite3.Connection, new: dict) -> None:
     if not new:
         return
     pat = _pattern(new)
+    clear: dict[str, set[str]] = {}  # values a document leaves in clear (overrides)
+    for d, v in con.execute("SELECT doc_id, value FROM overrides WHERE NOT mask"):
+        clear.setdefault(d, set()).add(v)
+
+    def hits(doc_id: str, t: str) -> list[re.Match]:
+        return [m for m in _hits(pat, t) if norm(m[0]) not in clear.get(doc_id, ())]
+
     # ponytail: every name, every sweep; an FTS prefilter like the chunks' if ingest slows on it
     for doc_id, name in con.execute("SELECT doc_id, name FROM pub.names").fetchall():
-        if c := [(m.start(), m.end(), _lookup(new, m)) for m in _hits(pat, name)]:
+        if c := [(m.start(), m.end(), _lookup(new, m)) for m in hits(doc_id, name)]:
             con.execute("UPDATE pub.names SET name = ? WHERE doc_id = ?", (_apply(name, c), doc_id))
     query = " OR ".join('"' + w.replace('"', '""') + '"' for v in new for w in v.split())
     for (doc_id,) in con.execute("SELECT DISTINCT doc_id FROM pub.chunks WHERE chunks MATCH ?",
                                  (query,)).fetchall():
         rows = con.execute("SELECT rowid, text FROM pub.chunks WHERE doc_id = ? ORDER BY seq",
                            (doc_id,)).fetchall()
-        cuts = [[(m.start(), m.end(), _lookup(new, m)) for m in _hits(pat, t)] for _, t in rows]
+        cuts = [[(m.start(), m.end(), _lookup(new, m)) for m in hits(doc_id, t)] for _, t in rows]
         for i in range(len(rows) - 1):
             a, b = rows[i][1], rows[i + 1][1]
             h = len(b.split("\n\n", 1)[0]) + 2 if b.startswith("#") and "\n\n" in b else 0
-            for m in _hits(pat, f"{a}\n{b[h:]}"):  # across the boundary, past b's heading prefix
+            for m in hits(doc_id, f"{a}\n{b[h:]}"):  # across the boundary, past b's heading prefix
                 if m.start() < len(a) < m.end():
                     cuts[i].append((m.start(), len(a), _lookup(new, m)))
                     cuts[i + 1].append((h, h + m.end() - len(a) - 1, _lookup(new, m)))
@@ -339,9 +384,11 @@ def _print(ev: dict) -> None:
 
 def forget(con: sqlite3.Connection, doc_id: str) -> None:
     """Take a document out of both databases: its chunks, its record, what was detected in it,
-    its categories. The entities stay: a value keeps its token in the documents that remain."""
+    its categories and decisions. The entities stay: a value keeps its token in the documents
+    that remain."""
     with con:
         con.execute("BEGIN IMMEDIATE")
+        con.execute("DELETE FROM overrides WHERE doc_id = ?", (doc_id,))
         con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
         con.execute("DELETE FROM pub.names WHERE doc_id = ?", (doc_id,))
         con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
@@ -368,12 +415,12 @@ def ingest_file(con: sqlite3.Connection, path: Path, allow: set[str], public: se
     if row and row[1] == sha and row[2] and not force:
         return row[0], None
     text = source(path)
-    spans = pii.detect(text)  # slow part, outside the write lock
+    spans = _detect(con, row and row[0], text)  # outside the write lock
     doc_id = row[0] if row else secrets.token_hex(8)
     new: dict[str, str] = {}
     with con:  # one transaction over private.db + public.db
         con.execute("BEGIN IMMEDIATE")
-        cuts = masks(con, text, spans, allow, public, new)
+        cuts = masks(con, text, spans, allow, public, new, doc_id)
         n = text.index("\n\n")  # the name's line ends: a token across it masks both sides
         name = _apply(text[:n], [(s, min(e, n), t) for s, e, t in cuts if s < n])
         chunks = chunk(_apply(text[n:], [(max(s, n) - n, e - n, t) for s, e, t in cuts if e > n]))
@@ -419,28 +466,46 @@ def run(root: Path, paths: list[Path], force: bool = False, emit=_print) -> int:
             emit(_doc(doc_id, path, counts.get(doc_id, 0), "unchanged" if n is None else "indexed"))
         except Exception as e:  # noqa: BLE001 - one bad file never stops the others
             failed += 1
+            if os.environ.get("MCP_SECRET_DEBUG"):  # where it failed: frames and the file an OSError names, never the message
+                print(*(f"{f.filename}:{f.lineno} {f.name}" for f in traceback.extract_tb(e.__traceback__)[-6:]),
+                      getattr(e, "filename", None), sep="\n", file=sys.stderr)
             row = con.execute("SELECT id FROM docs WHERE path = ?", (str(path),)).fetchone()
             emit(_doc(row and row[0], path, None, "error", type(e).__name__))
     emit({"event": "done"})
     return 1 if failed else 0
 
 
+# The detector: pii.py pins the model revision, the labels and the thresholds.
+# ponytail: its code, not the installed gliner; touch pii.py if an upgrade changes what it finds
+_DETECTOR = hashlib.sha256(Path(pii.__file__).read_bytes()).hexdigest()
+
+
 def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+    """What the spans stored for a document are keyed by: its text and the detector."""
+    return hashlib.sha256((_DETECTOR + text).encode()).hexdigest()
+
+
+def _detect(con: sqlite3.Connection, doc_id: str | None, text: str) -> list:
+    """The detector's spans: those stored for the document while its text and the detector are
+    the same (a re-index for allow.txt, deny.txt or public.txt), else detected now, the slow part."""
+    row = con.execute("SELECT spans FROM detected WHERE doc_id = ? AND text_sha = ?",
+                      (doc_id, _sha(text))).fetchone()
+    return [pii.Span(*x) for x in json.loads(row[0])] if row else pii.detect(text)
 
 
 def review(root: Path, doc_id: str) -> dict | None:
     """A document as ingest would publish it now, in clear: its text and the masked spans, with
     their type and token. The detector's spans are the ones stored at ingest while the parsed
-    text is the same (detection is most of the time); a changed file, or a parser that now reads
-    it differently, is detected again. Writes nothing: it works on an in-memory copy of
+    text and the detector are the same (detection is most of the time); a changed file, a parser
+    that now reads it differently or a new detector, is detected again. Writes nothing: it works on an in-memory copy of
     private.db, where a value ingest would learn gets the token it would get. None if `doc_id`
     is unknown."""
     con = sqlite3.connect(":memory:")
     src = sqlite3.connect((root / "private" / "private.db").as_uri() + "?mode=ro", uri=True)
     src.backup(con)
     src.close()
-    con.execute(DETECTED)  # an index from before it existed
+    for table in (DETECTED, OVERRIDES, LOCAL):  # an index from before they existed
+        con.execute(table)
     row = con.execute("SELECT path, sha256 FROM docs WHERE id = ?", (doc_id,)).fetchone()
     if not row:
         return None
@@ -450,9 +515,7 @@ def review(root: Path, doc_id: str) -> dict | None:
     if sha:
         allow, public, _ = lists(con, root / "private")
         out["text"] = text = source(Path(row[0]))
-        known = con.execute("SELECT spans FROM detected WHERE doc_id = ? AND text_sha = ?",
-                            (doc_id, _sha(text))).fetchone()
-        spans = [pii.Span(*x) for x in json.loads(known[0])] if known else pii.detect(text)
+        spans = _detect(con, doc_id, text)
         out["spans"] = [{"start": s, "end": e, "type": t[1:-1].rsplit("_", 1)[0], "token": t}
-                        for s, e, t in masks(con, text, spans, allow, public, {})]
+                        for s, e, t in masks(con, text, spans, allow, public, {}, doc_id)]
     return out

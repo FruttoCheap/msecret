@@ -7,3 +7,5 @@ __pycache__/
 fixtures/out/
 .DS_Store
 .claude/
+dist/
+docs/PLAN.md

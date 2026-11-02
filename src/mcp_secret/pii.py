@@ -18,8 +18,8 @@ MODEL, REVISION = "E3-JSI/gliner-multi-pii-domains-v1", "66b7951b1e020535d2f470d
 _FILES = ["gliner_config.json", "model.safetensors", "tokenizer*", "*_tokens*.json"]
 # "address" backs up the Italian-only address rules (foreign formats); same-type spans merge.
 LABELS = {"person": "PERSONA", "organization": "ORG", "location": "LUOGO", "address": "INDIRIZZO"}
-# Per type: the highest threshold that keeps the best recall on the tuning set (see README).
-THRESHOLD = {"PERSONA": 0.05, "ORG": 0.05, "LUOGO": 0.1, "INDIRIZZO": 0.5}
+# Per type: balanced thresholds preventing common words from being tagged as PII.
+THRESHOLD = {"PERSONA": 0.30, "ORG": 0.28, "LUOGO": 0.20, "INDIRIZZO": 0.5}
 WINDOW, OVERLAP = 200, 50  # words per model call: <= ~380 of the backbone's 512 subword tokens
 
 
@@ -74,6 +74,101 @@ def _alnum(s: str) -> str:
     return re.sub(r"[\W_]", "", s)
 
 
+def _norm(s: str) -> str:
+    return " ".join(s.split()).lower().replace("i\u0307", "i")
+
+
+# Roles, professions, pronouns, function words, corporate terms, and document concepts
+# that must never be masked as PII.
+ROLES = frozenset({
+    # Common function words & pronouns
+    "io", "tu", "lui", "lei", "noi", "voi", "loro", "egli", "ella", "esso", "essa", "essi", "esse",
+    "chi", "cui", "che", "chiunque", "qualcuno", "qualcuna", "nessuno", "nessuna",
+    "tutti", "tutte", "ciascuno", "ciascuna", "altri", "altre", "altro", "altra",
+    "questo", "questa", "questi", "queste", "quello", "quella", "quelli", "quelle",
+    "stesso", "stessa", "stessi", "stesse", "medesimo", "medesima",
+    # Verbs sometimes confused with names
+    "sono", "sei", "siamo", "siete", "era", "erano", "stato", "stata", "stati", "state",
+    "ho", "hai", "ha", "abbiamo", "avete", "hanno", "avuto",
+    # Roles, professions, document parties (singular & plural, m/f)
+    "cliente", "clienti", "utente", "utenti", "abbonato", "abbonati",
+    "tecnico", "tecnici", "tecnica", "tecniche", "tecnico abilitato",
+    "direttore", "direttori", "direttrice", "direttrici",
+    "responsabile", "responsabili", "responsabile qualificato",
+    "sindaco", "sindaci", "sindaca", "sindache",
+    "dottore", "dottori", "dottoressa", "dottoresse",
+    "medico", "medici", "specialista", "specialisti", "specialiste",
+    "avvocato", "avvocati", "avvocata", "avvocate", "legale", "legali", "legale societario",
+    "ingegnere", "ingegneri", "architetto", "architetti", "geometra", "geometri",
+    "geometra o architetto", "ragioniere", "ragionieri",
+    "professore", "professori", "professoressa", "professoresse", "docente", "docenti",
+    "maestro", "maestri", "maestra", "maestre",
+    "presidente", "presidenti", "presidente del consiglio", "vice presidente", "vicepresidente",
+    "amministratore", "amministratori", "amministratrice", "amministratrici",
+    "amministratore unico", "amministrazione", "consigliere", "consiglieri",
+    "ceo", "cfo", "coo", "cto", "owner", "founder", "team", "presidente/ceo", "ceo/team",
+    "consulente", "consulenti", "esperto", "esperti", "perito", "periti",
+    "professionista", "professionisti", "professione", "professioni", "prestazione", "prestazioni",
+    "consigliere più anziano", "consigliere più anziano di età", "amministratore più anziano",
+    "dipendente", "dipendenti", "dipendenti esterni", "impiegato", "impiegati", "impiegata", "impiegate",
+    "collaboratore", "collaboratori", "collaboratrice", "collaboratrici",
+    "funzionario", "funzionari", "funzionaria", "funzionarie",
+    "segretario", "segretari", "segretaria", "segretarie",
+    "fornitore", "fornitori", "paziente", "pazienti",
+    "locatore", "locatori", "locatrice", "locatrici",
+    "conduttore", "conduttori", "conduttrice", "conduttrici",
+    "locatario", "locatari", "locataria", "locatarie",
+    "proprietario", "proprietari", "proprietaria", "proprietarie",
+    "inquilino", "inquilini", "inquilina", "inquiline",
+    "testimone", "testimoni", "contraente", "contraenti",
+    "beneficiario", "beneficiari", "beneficiaria", "beneficiarie",
+    "richiedente", "richiedenti", "intestatario", "intestatari", "intestataria", "intestatarie",
+    "mittente", "mittenti", "destinatario", "destinatari", "destinataria", "destinatarie",
+    "collega", "colleghi", "colleghe", "amico", "amici", "amica", "amiche",
+    "socio", "soci", "socia", "socie", "socio fondatore", "soci fondatori",
+    "fondatore", "fondatori", "garante", "garanti", "investitore", "investitori",
+    "business angel", "terzi", "terzi estranei", "nuovo socio esterno", "soci esistenti", "soci rilevanti",
+    "commercialista", "commercialisti", "commercialista/notaio", "notaio", "notai", "notaio/legale",
+    "gestore", "gestori", "operatore", "operatori", "operatrice", "operatrici",
+    "persona", "persone", "persona fisica", "persone fisiche", "persona giuridica", "persone giuridiche",
+    "individuo", "individui", "cittadino", "cittadini", "cittadina", "cittadine",
+    # Document terms & contract concepts
+    "presente", "sottoscritto", "sottoscritta", "sottoscritti", "sottoscritte",
+    "titolare", "trattamento", "titolare del trattamento", "responsabile del trattamento",
+    "term sheet", "statuto", "atto costitutivo", "patti parasociali", "verbale",
+    "safe", "round", "startup", "start up", "startup innovativa", "pmi", "pmi innovativa",
+    "società", "societa", "azienda", "impresa", "ditta", "studio", "studio professionale",
+    "società fiduciaria", "società di revisione", "società per azioni",
+    "società a responsabilità limitata", "società a responsabilita limitata",
+    "foro competente", "sede della società", "sede della societa",
+    "cda", "consiglio", "consiglio di amministrazione", "consiglio d'amministrazione",
+    "sede", "sede legale", "sede operativa", "sede sociale",
+    "srl", "s.r.l.", "s.r.l. ordinaria", "spa", "s.p.a.", "snc", "s.n.c.", "sas", "s.a.s.",
+    "registro imprese", "registro delle imprese", "camera di commercio",
+    "agenzia delle entrate", "agenzia entrate", "mimit", "inps", "inail", "asl",
+    "pubblica amministrazione", "pubbliche amministrazioni", "comune", "regione", "corte costituzionale", "corte dei conti", "corte di cassazione", "tribunale",
+    "vigili del fuoco", "sportello unico",
+    "design & experience", "marketing & community", "operations",
+    "normativa", "d.lgs", "d. lgs", "lgs", "minori", "vietati", "account",
+    "dichiarante", "firma", "firma del dichiarante", "gentilissimo", "aventi diritto",
+    "paesi terzi", "nome cognome",
+    "dott", "dott.", "dott.ssa", "rag", "rag.", "avv", "avv.", "ing", "ing.",
+    "prof", "prof.", "prof.ssa", "geom", "geom.", "arch", "arch.", "sig", "sig.", "sig.ra",
+})
+
+_LEAD_PARTICLES = re.compile(
+    r"^(?:(?:[ld][\x27\u2019]|un[\x27\u2019]|(?:dall|dell|sull|nell|all)[\x27\u2019])\s*|"
+    r"(?:il|lo|la|i|gli|le|un|uno|una|del|della|dello|dei|degli|delle|al|alla|allo|ai|agli|alle|"
+    r"in|nel|nella|nello|nei|negli|nelle|da|dal|dalla|dallo|dai|dagli|dalle|su|sul|sulla|sullo|sui|sugli|sulle|"
+    r"con|per|tra|fra|o|e)\b\s*)+",
+    re.IGNORECASE,
+)
+
+
+def _clean_val(v: str) -> str:
+    return _LEAD_PARTICLES.sub("", v.strip()).strip()
+
+
 # --- rules ----------------------------------------------------------------------------------
 _OMO = r"[\dLMNP-V]"
 # What can sit between two characters of one identifier: grouping (space, NBSP after clean(),
@@ -108,10 +203,23 @@ _CAP_CITY = rf"\d{{5}},?\s+{_CITY}(?:\s*\([A-Z]{{2}}\))?"
 # A field or table column holding a name.
 _LABEL = (r"Cognome|Nome|Nome e cognome|Cognome e nome|Nominativo|Intestatario|Dipendente|Referenze"
           r"|References?|Surname|(?:First |Last |Full )?[Nn]ame")
+_HON_WORDS = (
+    r"Signor(?:e|a|ina)?|Dottor(?:e|essa)?|Avvocat[oa]|Ingegner(?:e)?|Professor(?:e|essa)?"
+    r"|Architett[oa]|Geometr[a]|Ragionier(?:e)?|Presidente|Direttor(?:e|ice)?|Responsabile|Sindac[oa]"
+    r"|Cliente|Utente|Collega|Amic[oa]|Dipendente"
+    r"|Sig(?:\.ra|\.na|\.)|Dott(?:\.ssa|\.)|Avv\.|Ing\.|Prof(?:\.ssa|\.)|Geom\.|Rag\.|Arch\."
+    r"|Mr\.|Mrs\.|Ms\.|Dr\."
+)
+_ART = r"(?:[Ii]l|[Ll]o|[Ll]a|[Ii]|[Gg]li|[Ll]e|[Ll]['’]|[Uu]n|[Uu]no|[Uu]na|[Uu]n['’]|[Tt]he|[Aa]n?)\s+"
+_GREET = r"(?:Gent(?:\.mo|\.ma|ile)?|Egregi[oa]|Car[oa]|Ciao|Dear|Hi|Hello)"
 _HON = (r"Sig(?:\.ra|\.na|\.)|Dott(?:\.ssa|\.)|Avv\.|Ing\.|Prof(?:\.ssa|\.)|Geom\.|Rag\.|Arch\."
         r"|Mr\.|Mrs\.|Ms\.|Dr\.")
 # A title is no part of the name: "Avv. X" and "X" must get the same token.
-_HONOR = re.compile(rf"(?i:(?:{_HON})\s+|(?:{_HON}|sig|dott|avv|ing|prof|geom|rag|arch|dr|mrs?|ms)\.?\s*$)")
+_HONOR = re.compile(
+    rf"(?i:(?:{_ART})?(?:(?:{_GREET})\s+)?(?:(?:{_HON_WORDS})\.?\s+)+"
+    rf"|(?:{_ART})?(?:{_GREET})\s+"
+    rf"|(?:{_ART})?\s*(?:{_HON_WORDS}|sig|dott|avv|ing|prof|geom|rag|arch|dr|mrs?|ms)\.?\s*$)"
+)
 _TITLE = (
     rf"(?:{_HON}|Gent(?:\.mo|\.ma|ile)|Egregi[oa]|Car[oa]|Ciao|Dear|Hi|Hello|(?:{_LABEL}):)"
 )
@@ -145,8 +253,10 @@ _RULES = [
         r"|(?:[A-Z]{1,3} ?)?(?=[A-Z0-9]*\d)[A-Z0-9]{5,20}(?: [A-Z]{2}\b)?)\b"
     ), None),
     # Names the model scores low: after a title or greeting, and "M. Rossi".
-    ("PERSONA", re.compile(rf"\b{_TITLE} (?P<v>{_NAME}(?: {_NAME}){{0,2}})"), None),
-    ("PERSONA", re.compile(rf"(?<![\w.])[A-Z]\. [{_UP}][a-zà-ÿ'’]{{2,}}"), None),
+    ("PERSONA", re.compile(rf"\b{_TITLE} (?P<v>{_NAME}(?: {_NAME}){{0,2}})"),
+     lambda v: _norm(v) not in ROLES and _clean_val(_norm(v)) not in ROLES),
+    ("PERSONA", re.compile(rf"(?<![\w.])[A-Z]\. [{_UP}][a-zà-ÿ'’]{{2,}}"),
+     lambda v: _clean_val(_norm(v)).split()[-1] not in ROLES),
     # These two keep their anchor in the span, so the value never becomes a bare common word
     # ("Support", "groups") swept through every document. A first name under an informal closing:
     ("PERSONA", re.compile(rf"(?m)^[ \t]*(?:Cheers|Thanks|Thank you|Best|Love|Un abbraccio|Baci"
@@ -185,7 +295,7 @@ _RULES = [
         r"(?P<v>(?:[A-Z]{2}|ROMA)[ -]?(?=[A-Z]?\d)[A-Z0-9]{5,6})\b"
     ), None),
     ("INDIRIZZO", re.compile(
-        rf"\b{_STREET}\s+[\w'’. ]{{1,40}}?,?\s*(?:n\.\s*)?\d+[A-Za-z]?(?:/\w+)?\b(?![./-]\d)"
+        rf"\b{_STREET}\s+(?!(?:app|web|mail|e-?mail|pec|chat|telefono|fax|sms|cavo|satellite|dei|degli|del|delle)\b)[\w'’. ]{{1,40}}?,?\s*(?:n\.\s*)?\d+[A-Za-z]?(?:/\w+)?\b(?![./-]\d)"
         rf"(?:,?\s*(?:int\.?|interno|scala|sc\.|piano)\s*\w+)*(?:[\s,–-]+{_CAP_CITY})?"
         rf"|\b{_CAP_CITY}"
     ), None),
@@ -212,9 +322,15 @@ _PART = re.compile(rf"[{_UP}][^\W\d_]*(?:['’-][^\W\d_]+)*")  # one word of a n
 
 def _phone_ok(s: str, before: str) -> bool:
     d = sum(c.isdigit() for c in s)
-    if re.fullmatch(r"\d{1,2}([./-])\d{1,2}\1\d{2,4}", s) or _DECIMAL.search(before) and (
-            not re.match(r"[+(]|00\d", s) and (re.search(r"\.\d{3},$", before)
-                                                or not re.fullmatch(r"3\d{8,9}|0\d{8,10}", _alnum(s)))):
+    if (
+        re.fullmatch(r"\d{1,2}([./-])\d{1,2}\1\d{2,4}", s)
+        or re.fullmatch(r"\d{1,5}/\d{2,4}", s)
+        or _DECIMAL.search(before)
+        and (
+            not re.match(r"[+(]|00\d", s)
+            and (re.search(r"\.\d{3},$", before) or not re.fullmatch(r"3\d{8,9}|0\d{8,10}", _alnum(s)))
+        )
+    ):
         return False
     if s[0] in "+(" or s.startswith("00"):
         return 8 <= d <= 15
@@ -312,7 +428,7 @@ def _parts(text: str, spans: list[Span]):
     for s in spans:
         v = text[s.start : s.end]
         if s.type == "PERSONA" and "\n" not in v and len(v.split()) > 1:
-            parts.update(w for w in v.split() if len(w) >= 3 and _PART.fullmatch(w))
+            parts.update(w for w in v.split() if len(w) >= 3 and _PART.fullmatch(w) and _norm(w) not in ROLES)
     if parts:
         rx = re.compile(rf"{_B}(?:{'|'.join(map(re.escape, parts))}){_E}", re.IGNORECASE)
         yield from (Span(m.start(), m.end(), "PERSONA") for m in rx.finditer(text) if m[0][0].isupper())
@@ -349,7 +465,9 @@ def _ner(text: str) -> list[Span]:
     wins = [(words[i][0], words[min(i + WINDOW, len(words)) - 1][1])
             for i in range(0, max(len(words) - OVERLAP, 1), WINDOW - OVERLAP)]
     chunks = [text[a:b] for a, b in wins]
-    preds = _gliner().inference(chunks, list(LABELS), threshold=min(THRESHOLD.values()))
+    model = _gliner()
+    predict = getattr(model, "inference", None) or model.batch_predict_entities  # gliner < 0.2.23: Intel
+    preds = predict(chunks, list(LABELS), threshold=min(THRESHOLD.values()))
     return [
         Span(a + e["start"], a + e["end"], LABELS[e["label"]])
         for (a, _), ents in zip(wins, preds)
@@ -373,10 +491,43 @@ def _untitle(text: str, s: Span) -> Span | None:
 
 
 def _proper(text: str, s: Span) -> bool:
-    """A model ORG or LUOGO is a proper name: a capital letter in it. "catasto fabbricati",
-    "lastrico solare", "condominio" are not, and as entities they would be masked everywhere.
-    ponytail: an org written all lowercase ("lavoro da iliad") is lost; PERSONA keeps them."""
-    return s.type not in ("ORG", "LUOGO") or not text[s.start : s.end].islower()
+    """A model span must represent a real proper entity, not a common role, phrase, or lowercase text."""
+    v = text[s.start : s.end].strip(" _-\t\n[]")
+    if not v:
+        return False
+    nv = _norm(v)
+    base = _clean_val(nv)
+    if nv in ROLES or base in ROLES:
+        return False
+
+    if s.type == "PERSONA":
+        if v.islower() or not any(c.isupper() for c in v):
+            return False
+        if len(re.sub(r"[\W_\d]", "", v)) <= 1:
+            return False
+        words = v.split()
+        if words and words[0][0].islower():
+            return False
+        if re.fullmatch(r"[A-Z]\.\s*\w+", v) and base.split()[-1] in ROLES:
+            return False
+        if nv in {"dott", "rag", "avv", "ing", "prof", "geom", "arch", "sig", "gg mm aa"}:
+            return False
+
+    if s.type in ("ORG", "LUOGO"):
+        if v.islower():
+            return False
+        if s.type == "LUOGO" and nv in {"sede", "paesi terzi"}:
+            return False
+
+    if s.type == "INDIRIZZO":
+        if re.search(r"\bvia\s+(?:app|web|mail|e-?mail|pec|chat|telefono|fax|sms|cavo|satellite)\b", nv):
+            return False
+        if re.search(r"\bcorso\s+(?:dei|degli|del|della|delle|di)\b", nv):
+            return False
+        if nv in {"domicilio", "residenza", "indirizzo"} or nv.isdigit():
+            return False
+
+    return True
 
 
 def detect(text: str) -> list[Span]:

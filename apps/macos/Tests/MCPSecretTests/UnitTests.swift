@@ -47,7 +47,7 @@ struct Recorded {
 }
 
 // Recorded from the real CLI on synthetic documents.
-let STATUS = #"{"event": "status", "root": "/tmp/data", "models": true, "index": true, "docs": 3, "chunks": 4}"#
+let STATUS = #"{"event": "status", "root": "/tmp/data", "models": true, "index": true, "docs": 3, "chunks": 4, "version": "0.1.0"}"#
 let LIST = """
 {"event": "doc", "doc_id": "aaaaaaaaaaaaaaaa", "path": "/docs/a.txt", "chunks": 1, "exists": true, "stale": false}
 {"event": "doc", "doc_id": "bbbbbbbbbbbbbbbb", "path": "/docs/b.txt", "chunks": 2, "exists": false, "stale": false}
@@ -75,7 +75,7 @@ let DRIVE_SYNC = """
 
 @Suite struct Decoding {
     @Test func everyEvent() throws {
-        #expect(try Event.decode(STATUS) == .status(Status(root: "/tmp/data", models: true, index: true, docs: 3, chunks: 4)))
+        #expect(try Event.decode(STATUS) == .status(Status(root: "/tmp/data", models: true, index: true, docs: 3, chunks: 4, version: "0.1.0")))
         #expect(try Event.decode(#"{"event": "start", "files": 2}"#) == .start(files: 2, steps: nil))
         #expect(try Event.decode(#"{"event": "start", "steps": 2}"#) == .start(files: nil, steps: 2))
         #expect(try Event.decode(#"{"event": "step", "step": 1, "name": "docling"}"#) == .step(1, name: "docling"))
@@ -233,6 +233,26 @@ let DRIVE_SYNC = """
         #expect(core.calls.filter { $0.hasPrefix("review ") }.count == 3)
     }
 
+    @Test func maskOrLeaveInClearInThisDocumentOnly() async throws {
+        let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0), "review": (REVIEW, 0), "show": (SHOW, 0),
+                                 "deny": (#"{"event": "deny", "action": "add", "doc_id": "aaaaaaaaaaaaaaaa", "changed": true}"#, 0),
+                                 "allow": (#"{"event": "allow", "action": "add", "doc_id": "aaaaaaaaaaaaaaaa", "changed": true}"#, 0),
+                                 "ingest": (INGEST, 0)])
+        let app = AppModel(cliPath: core.path)
+        let doc = DocumentModel(app: app, docId: "aaaaaaaaaaaaaaaa")
+        await doc.load()
+        doc.selection = " marzo "
+        await doc.maskAlways(here: true)
+        doc.step(1)
+        await doc.dontMask(here: true)
+        #expect(app.problem == nil && doc.selected == nil)
+        // `--doc`, and a forced ingest of this document each time: nothing else would apply it
+        #expect(core.calls.filter { $0.contains(" add ") || $0.contains(" ingest ") } == [
+            "--json deny add --doc aaaaaaaaaaaaaaaa -- marzo", "--json ingest --force -- /docs/a.txt",
+            "--json allow add --doc aaaaaaaaaaaaaaaa -- Mario Rossi", "--json ingest --force -- /docs/a.txt",
+        ])
+    }
+
     @Test func connectClaudeDesktop() async throws {
         let core = try Recorded(["desktop-config": (DESKTOP, 0)])
         let app = AppModel(cliPath: core.path)
@@ -266,17 +286,19 @@ let DRIVE_SYNC = """
         #expect(core.calls == ["--json deny add -- x"])  // no ingest after a failed deny
     }
 
-    @Test func maskingFromTheValuesList() async throws {
+    @Test func decisionsFromTheValuesListApplyInOneReindex() async throws {
         let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0), "ingest": (INGEST, 0),
                                  "allow": (#"{"event": "allow", "action": "add", "changed": true}"#, 0),
                                  "deny": (#"{"event": "deny", "action": "add", "changed": true}"#, 0)])
         let app = AppModel(cliPath: core.path)
         await app.refresh()
-        await app.mask("mario rossi", false, docIds: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"])  // b's file is gone
-        await app.mask("frittata", true, docIds: [])  // in clear nowhere yet: denied, nothing to re-index
-        #expect(app.problem == nil)
+        app.decisions = ["mario rossi": .init(mask: false, docIds: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"]),  // b's file is gone
+                         "frittata": .init(mask: true, docIds: ["cccccccccccccccc"])]
+        await app.applyDecisions()
+        #expect(app.problem == nil && app.decisions.isEmpty)
         #expect(core.calls.filter { !$0.hasSuffix("status") && !$0.hasSuffix("list") } == [
-            "--json allow add -- mario rossi", "--json ingest --force -- /docs/a.txt", "--json deny add -- frittata"])
+            "--json deny add -- frittata", "--json allow add -- mario rossi",
+            "--json ingest --force -- /docs/a.txt /docs/c.txt"])
         #expect(try Event.decode(#"{"event": "value", "value": "frittata", "doc_ids": ["aaaaaaaaaaaaaaaa"]}"#)
             == .value(Value(value: "frittata", docIds: ["aaaaaaaaaaaaaaaa"])))
     }
@@ -519,7 +541,7 @@ let CATEGORIZED = """
     let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 1180, height: 760), styleMask: [.titled],
                           backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false  // ARC owns it
-    window.contentView = NSHostingView(rootView: MainView(selection: ids).environment(app))
+    window.contentView = NSHostingView(rootView: MainView(selection: ids, advanced: true).environment(app))
     window.orderFrontRegardless()
     defer { window.close() }
     func outline(_ v: NSView) -> NSOutlineView? { (v as? NSOutlineView) ?? v.subviews.lazy.compactMap(outline).first }
@@ -568,5 +590,33 @@ let CATEGORIZED = """
             let shown = try await app.cli.events("show", id).compactMap(\.chunk).map(\.text).joined(separator: "\n\n")
             #expect(!shown.isEmpty && file.text == shown + "\n")
         }
+    }
+}
+
+@Suite struct Install {
+    @Test func commandNamesTheShippedWheelAndPins() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "it's \(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        #expect(CLI.installCommand(resources: dir) == nil)  // no wheel: not a release app
+        try Data().write(to: dir.appending(path: "mcp_secret-0.1.0-py3-none-any.whl"))
+        let command = try #require(CLI.installCommand(resources: dir))
+        #expect(command.contains("uv tool install"))
+        #expect(command.contains("cd '\(dir.path.replacingOccurrences(of: "'", with: #"'\''"#))' && uv tool install"))
+        #expect(command.hasSuffix("-c constraints.txt ./mcp_secret-0.1.0-py3-none-any.whl"))
+        #expect(CLI.shippedWheel(resources: dir)?.version == "0.1.0")
+    }
+
+    @MainActor @Test func aCoreOfAnotherVersionShowsTheInstallSheetAgain() async throws {
+        let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0)])  // STATUS: version 0.1.0
+        let app = AppModel(cliPath: core.path, dataRoot: "/tmp/data")
+        app.shippedVersion = "0.2.0"
+        await app.refresh()
+        #expect(app.coreMissing && core.calls == ["--json status"])  // nothing else runs against it
+        app.shippedVersion = "0.1.0"
+        await app.refresh()
+        #expect(!app.coreMissing && app.docs.count == 3)
+        app.shippedVersion = nil  // `swift run`: no wheel shipped, any core will do
+        await app.refresh()
+        #expect(!app.coreMissing)
     }
 }

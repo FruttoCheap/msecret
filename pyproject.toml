@@ -2,8 +2,12 @@
 name = "mcp-secret"
 version = "0.1.0"
 description = "Local document index exposed to AI agents via MCP, pseudonymized only."
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Giulio Desana" }]
 requires-python = ">=3.12,<3.13"
-dependencies = ["docling", "ocrmac", "gliner", "mcp"]
+dependencies = ["docling", "ocrmac; sys_platform == 'darwin'", "onnxruntime; sys_platform != 'darwin'",  # RapidOCR's engine
+                "gliner", "mcp"]
 
 [project.scripts]
 mcp-secret = "mcp_secret.cli:main"
@@ -17,3 +21,19 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 100
+
+# Intel Macs: these are the last releases with a macOS x86_64 wheel (docling-parse 4.7.2 holds
+# docling at 2.73); torch 2.2.2 predates NumPy 2 and
+# has no torch.compile on Python 3.12 (gliner 0.2.23+ pulls ModernBERT, which needs it), and
+# transformers 5 needs torch >= 2.4.
+[tool.uv]
+constraint-dependencies = [
+    "torch<2.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torchvision<0.18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "transformers<5; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "docling-parse<4.7.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "gliner<0.2.23; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "onnxruntime<1.20; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]

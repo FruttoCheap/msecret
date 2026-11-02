@@ -10,8 +10,13 @@ func L(_ key: String.LocalizationValue) -> String { String(localized: key, bundl
 final class AppModel {
     // ponytail: settings last for the session (launch arguments `-cliPath`, `-dataRoot` preset
     // them); persist them when someone needs non-default paths every day
-    var cliPath = UserDefaults.standard.string(forKey: "cliPath") ?? CLI.defaultPath
+    var cliPath = UserDefaults.standard.string(forKey: "cliPath") ?? CLI.startPath
     var dataRoot = UserDefaults.standard.string(forKey: "dataRoot") ?? ""
+    /// No core at `cliPath`, or one of another version than the app ships (a downloaded app on its
+    /// first launch, or after an update): the install sheet.
+    var coreMissing = false
+    /// The version of the core this app ships; nil when it ships none (`swift run`): any core will do.
+    var shippedVersion = CLI.shippedWheel()?.version
     var status: Status?
     var docs: [Doc] = []
     /// Each path's last `ingest` event this session.
@@ -21,10 +26,16 @@ final class AppModel {
     var rules: [Rule] = []
     /// The sidebar shows only this category's documents; nil: all.
     var category: String?
+    /// The simple window's document: the file dropped or chosen last.
+    var current: String?
+    /// The last document an ingest reported, whatever its status (removals excepted).
+    private var latest: Doc?
     var restartClaude = false
     /// The folder of the last export this session: every ingest refreshes it.
     var exportDir: String?
     var notice: String?
+    /// Values checked or unchecked in the list of values, not applied yet.
+    var decisions: [String: Decision] = [:]
     var job: Job?
     var problem: String?
     private var task: Task<Void, Never>?
@@ -41,6 +52,12 @@ final class AppModel {
     }
 
     enum State { case indexed, unchanged, error, missing, changed }
+
+    /// Mask a value everywhere (`deny`), or leave it in clear (`allow`) in these documents.
+    struct Decision: Equatable {
+        var mask: Bool
+        var docIds: [String]
+    }
 
     struct Row: Identifiable, Equatable {
         var docId: String?
@@ -87,12 +104,19 @@ final class AppModel {
     var needsSetup: Bool { !(status?.models ?? false) || !(status?.index ?? false) }
 
     func refresh() async {
+        coreMissing = !FileManager.default.isExecutableFile(atPath: cliPath)
+        if coreMissing { return }
         reviews = [:]
         generation += 1
         do {
             status = try await cli.events("status").compactMap(\.status).first
+            if let shipped = shippedVersion, status?.version != shipped {
+                coreMissing = true
+                return
+            }
             docs = try await cli.events("list").compactMap(\.doc)
             if let c = category, !categories.contains(c) { category = nil }
+            if let c = current, !docs.contains(where: { $0.docId == c }) { current = nil }  // forgotten
         } catch {
             report(error)
         }
@@ -149,6 +173,21 @@ final class AppModel {
         await track(L("Indexing"), ["ingest"] + (force ? ["--force"] : []) + ["--"] + paths)
     }
 
+    /// The simple window: one file, indexed like any other, then shown. A folder or several files
+    /// are for the advanced one.
+    func open(_ urls: [URL]) async {
+        guard urls.count == 1, (try? urls[0].resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true else {
+            return problem = L("Drop one file at a time.")
+        }
+        latest = nil
+        await ingest([urls[0].path])
+        if let id = latest?.docId {
+            current = id
+        } else if latest?.status == "error" {
+            problem = L("Could not be indexed")
+        }
+    }
+
     /// `drive sync`: the folders' files downloaded (`file` events), then ingested, one stream.
     func syncDrive() async { await track(L("Syncing Google Drive"), ["drive", "sync"]) }
 
@@ -165,6 +204,7 @@ final class AppModel {
                     job?.done += 1
                 case .doc(let d):
                     outcome[d.path] = d
+                    if d.status != "removed" { latest = d }
                     job?.current = URL(filePath: d.path).lastPathComponent
                     if d.status != "removed" { job?.done += 1 }
                 default: break
@@ -265,21 +305,34 @@ final class AppModel {
 
     /// `deny add` (always mask) or `allow add` (never mask) a value, then the ingest that
     /// applies it to these documents: a plain one for deny (every run sweeps the deny list
-    /// through what is published), `--force` for allow (the files did not change).
-    func decide(_ list: String, _ value: String, paths: [String]) async {
+    /// through what is published), `--force` for allow (the files did not change). With `doc`,
+    /// the decision is for that document alone, and nothing sweeps it: `--force` either way.
+    func decide(_ list: String, _ value: String, paths: [String], doc: String? = nil) async {
         do {
-            _ = try await cli.events(list, "add", "--", value)
+            _ = try await cli.events([list, "add"] + (doc.map { ["--doc", $0] } ?? []) + ["--", value])
         } catch {
             return report(error)
         }
-        await ingest(paths, force: list == "allow")
+        await ingest(paths, force: list == "allow" || doc != nil)
     }
 
-    /// From the list of values: mask `value` again everywhere (`deny`), or leave it in clear
-    /// (`allow`) in these documents, re-indexed. A missing file keeps what it published.
-    func mask(_ value: String, _ on: Bool, docIds: [String]) async {
-        await decide(on ? "deny" : "allow", value,
-                     paths: docs(Set(docIds)).filter { $0.exists != false }.map(\.path))
+    /// The decisions, applied: `deny add` or `allow add` each, then one ingest of all their
+    /// documents, `--force` if a value is to be in clear. A failed write stops there: the ones
+    /// written are applied, the rest stay. A missing file keeps what it published.
+    func applyDecisions() async {
+        var done: [Decision] = []
+        for (value, d) in decisions.sorted(by: { $0.key < $1.key }) {
+            do {
+                _ = try await cli.events(d.mask ? "deny" : "allow", "add", "--", value)
+            } catch {
+                report(error)
+                break
+            }
+            decisions[value] = nil
+            done.append(d)
+        }
+        let ids = Set(done.flatMap(\.docIds))
+        await ingest(docs(ids).filter { $0.exists != false }.map(\.path), force: done.contains { !$0.mask })
     }
 
     /// `review` through one long-lived core process: the models load once, not on every click.
@@ -317,6 +370,7 @@ final class AppModel {
     func cancel() { task?.cancel() }
 
     func report(_ error: Error) {
+        if coreMissing { return }  // the install sheet says it
         if let e = error as? CLIError {
             problem = e.text
         } else {
@@ -380,17 +434,19 @@ final class DocumentModel {
         selection = ""
     }
 
-    func maskAlways() async {
+    /// The selected text, masked in every document, or with `here` in this one only.
+    func maskAlways(here: Bool = false) async {
         let value = selection.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, let path = review?.path else { return }
-        await app.decide("deny", value, paths: [path])
+        await app.decide("deny", value, paths: [path], doc: here ? docId : nil)
         selection = ""
         await load()
     }
 
-    func dontMask() async {
+    /// The selected span's value, in clear in every document, or with `here` in this one only.
+    func dontMask(here: Bool = false) async {
         guard let span = selectedSpan, let review else { return }
-        await app.decide("allow", review.value(span), paths: [review.path])
+        await app.decide("allow", review.value(span), paths: [review.path], doc: here ? docId : nil)
         selected = nil
         await load()
     }

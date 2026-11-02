@@ -1,6 +1,6 @@
 # mcp-secret
 
-Spec: PLAN.md. Lean on purpose (ponytail): build only what the plan asks.
+Spec: docs/PLAN.md (local, not versioned). Lean on purpose (ponytail): build only what the plan asks.
 
 ## Context
 Local macOS app: indexes the user's documents and exposes them to an AI agent through

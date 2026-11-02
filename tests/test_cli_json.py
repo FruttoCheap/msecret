@@ -5,6 +5,7 @@ import os
 import signal
 import sqlite3
 import subprocess
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,8 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
     root, docs = tmp_path / "data", tmp_path / "docs"
     env = {**os.environ, "MCP_SECRET_HOME": str(root)}
     assert run(env, "status") == [{"event": "status", "root": str(root.resolve()), "models": True,
-                                   "index": False, "docs": 0, "chunks": 0}]
+                                   "index": False, "docs": 0, "chunks": 0,
+                                   "version": version("mcp-secret")}]
     assert run(env, "list") == []
     assert run(env, "show", "x", code=1)[0]["error"] == "no_index"
 
@@ -191,8 +193,13 @@ def test_review_reuses_what_ingest_detected(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pii, "detect", detect)
     assert ingest.review(root, doc_id) == stored  # same text: the spans stored at ingest
+    assert ingest.run(root, [docs], force=True, emit=lambda ev: None) == 0  # a re-index too
     (docs / "a.txt").write_text(CONTRACT + "Fine.\n")
     with pytest.raises(AssertionError, match="detected again"):  # new text: detected
+        ingest.review(root, doc_id)
+    (docs / "a.txt").write_text(CONTRACT)
+    monkeypatch.setattr(ingest, "_DETECTOR", "a new pii.py")
+    with pytest.raises(AssertionError, match="detected again"):  # new detector: detected
         ingest.review(root, doc_id)
 
 
@@ -322,3 +329,54 @@ def test_export(tmp_path):
     assert (ev["docs"], ev["removed"]) == (1, 2)
     assert sorted(p.name for p in (work / "pseudonymized").iterdir()) == sorted(["mine.md", f"{b['doc_id']}.md"])
     assert (work / "notes.md").read_text() == "mine"
+
+
+def test_deny_allow_for_one_document(tmp_path):
+    """`deny|allow --doc`: a value masked, or left in clear, in a single document."""
+    root, docs = tmp_path / "data", tmp_path / "docs"
+    env = {**os.environ, "MCP_SECRET_HOME": str(root)}
+    docs.mkdir()
+    for name in "ab":
+        (docs / f"{name}.txt").write_text("Verbale: dopo la frittata e la polenta.\n")
+    a, b = run(env, "ingest", str(docs))[1:-1]
+    a, b = a["doc_id"], b["doc_id"]
+
+    def here(doc_id, mask, value):
+        return run(env, "deny" if mask else "allow", "add", "--doc", doc_id, "--", value)
+
+    # masked in a, only there: the next ingest of the other document leaves it alone
+    assert here(a, True, " Frittata") == [
+        {"event": "deny", "action": "add", "doc_id": a, "changed": True}]
+    assert here(a, True, "frittata")[0]["changed"] is False
+    run(env, "ingest", "--force", str(docs))
+    assert "frittata" not in text(env, a) and "frittata" in text(env, b)
+    [r] = run(env, "review", a)
+    [span] = [s for s in r["spans"] if r["text"][s["start"]:s["end"]] == "frittata"]
+    token = span["token"]
+    assert token in text(env, a)
+    assert next(t for t in run(env, "tokens") if t["token"] == token)["doc_ids"] == [a]
+    # a later global decision takes it everywhere, under the same token
+    run(env, "deny", "add", "frittata")
+    run(env, "ingest", str(docs))
+    assert token in text(env, b) and "frittata" not in text(env, b)
+
+    # left in clear in a, only there, whatever a global deny sweeps through the others
+    assert here(a, False, "polenta")[0]["changed"] is True
+    run(env, "deny", "add", "polenta")
+    run(env, "ingest", "--force", str(docs))
+    assert "polenta" in text(env, a) and "polenta" not in text(env, b)
+    run(env, "ingest", str(docs))  # the sweep of every run
+    assert "polenta" in text(env, a) and "polenta" not in text(env, b)
+    # the latest decision wins; remove takes one back
+    assert here(a, True, "polenta")[0]["changed"] is True
+    run(env, "ingest", "--force", str(docs / "a.txt"))
+    assert "polenta" not in text(env, a)
+    assert run(env, "deny", "remove", "--doc", a, "--", "polenta")[0]["changed"] is True
+    assert run(env, "deny", "remove", "--doc", a, "--", "polenta")[0]["changed"] is False
+
+    assert run(env, "deny", "add", "--doc", "f" * 16, "--", "x", code=1)[0]["error"] == "no_document"
+    assert run(env, "deny", "add", "--doc", a, "--", " ", code=1)[0]["error"] == "bad_value"
+    assert run(env, "deny", "--doc", a, code=2) == []
+    here(a, False, "polenta")
+    run(env, "forget", a)  # its decisions go with it
+    assert sqlite3.connect(root / "private" / "private.db").execute("SELECT count(*) FROM overrides").fetchone() == (0,)

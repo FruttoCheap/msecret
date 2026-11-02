@@ -21,6 +21,46 @@
         }
       }
     },
+    "%lld changes not applied yet": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld change not applied yet"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld changes not applied yet"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld modifica non ancora applicata"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld modifiche non ancora applicate"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld documents": {
       "localizations": {
         "en": {
@@ -121,6 +161,16 @@
         }
       }
     },
+    "A change reaches the agent only once its documents are indexed again: the text the agent sees is rebuilt from the originals.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una modifica arriva all'agente solo quando i suoi documenti vengono reindicizzati: il testo che l'agente vede viene ricostruito dagli originali."
+          }
+        }
+      }
+    },
     "Add": {
       "localizations": {
         "it": {
@@ -181,6 +231,16 @@
         }
       }
     },
+    "Advanced View": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interfaccia avanzata"
+          }
+        }
+      }
+    },
     "All Documents": {
       "localizations": {
         "it": {
@@ -217,6 +277,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Maschera sempre"
+          }
+        }
+      }
+    },
+    "Applied at the next re-index": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applicata alla prossima reindicizzazione"
           }
         }
       }
@@ -297,6 +367,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Le modifiche valgono fino all'uscita. Premi Invio per applicarle."
+          }
+        }
+      }
+    },
+    "Check Again": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controlla di nuovo"
           }
         }
       }
@@ -421,6 +501,16 @@
         }
       }
     },
+    "Copy Command": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copia comando"
+          }
+        }
+      }
+    },
     "Core": {
       "localizations": {
         "it": {
@@ -477,6 +567,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Deseleziona"
+          }
+        }
+      }
+    },
+    "Discard": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulla modifiche"
           }
         }
       }
@@ -551,12 +651,12 @@
         }
       }
     },
-    "Don't Mask…": {
+    "Don't Mask Here…": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Non mascherare…"
+            "value": "Non mascherare qui…"
           }
         }
       }
@@ -631,6 +731,26 @@
         }
       }
     },
+    "Drag this file to a folder or another app: it holds only what the agent sees.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trascina questo file in una cartella o in un'altra app: contiene solo ciò che vede l'agente."
+          }
+        }
+      }
+    },
+    "Drop a file here": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trascina qui un file"
+          }
+        }
+      }
+    },
     "Drop files and folders here": {
       "localizations": {
         "it": {
@@ -641,12 +761,22 @@
         }
       }
     },
-    "Drop files and folders on the list on the left, or choose them. They are read here, on this Mac.": {
+    "Drop one file at a time.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Trascina file e cartelle sulla lista a sinistra, oppure sceglili. Vengono letti qui, su questo Mac."
+            "value": "Trascina un solo file alla volta."
+          }
+        }
+      }
+    },
+    "Drop your documents in the window, or choose them. They are read here, on this Mac.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trascina i documenti nella finestra, oppure sceglili. Vengono letti qui, su questo Mac."
           }
         }
       }
@@ -931,6 +1061,16 @@
         }
       }
     },
+    "Install the core": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installa il core"
+          }
+        }
+      }
+    },
     "Last used by Claude": {
       "localizations": {
         "it": {
@@ -977,6 +1117,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Maschera"
+          }
+        }
+      }
+    },
+    "Mask Here": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maschera qui"
           }
         }
       }
@@ -1037,6 +1187,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mai"
+          }
+        }
+      }
+    },
+    "Never Mask…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non mascherare mai…"
           }
         }
       }
@@ -1171,6 +1331,26 @@
         }
       }
     },
+    "Open File…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri file…"
+          }
+        }
+      }
+    },
+    "Open Terminal": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Terminale"
+          }
+        }
+      }
+    },
     "Organization": {
       "localizations": {
         "it": {
@@ -1281,6 +1461,16 @@
         }
       }
     },
+    "Re-index Now": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reindicizza ora"
+          }
+        }
+      }
+    },
     "Reading the original…": {
       "localizations": {
         "it": {
@@ -1381,6 +1571,16 @@
         }
       }
     },
+    "Save…": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva…"
+          }
+        }
+      }
+    },
     "Select a highlighted value to find its token here.": {
       "localizations": {
         "it": {
@@ -1437,6 +1637,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mostrata"
+          }
+        }
+      }
+    },
+    "Simple View": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interfaccia semplice"
           }
         }
       }
@@ -1777,6 +1987,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rimpicciolisci"
+          }
+        }
+      }
+    },
+    "mcp-secret needs its core, a command-line program that is missing or is not the version of this app. Paste this in Terminal: it takes a few minutes and uses the network. Then come back here.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mcp-secret ha bisogno del suo core, un programma da riga di comando che manca o non è la versione di questa app. Incolla questo comando nel Terminale: richiede qualche minuto e usa la rete. Poi torna qui."
+          }
+        }
+      }
+    },
+    "“%@” becomes visible to the agent in this document only.": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” diventa visibile all'agente solo in questo documento."
           }
         }
       }

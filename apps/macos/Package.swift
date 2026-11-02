@@ -8,7 +8,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "MCPSecret",
-            resources: [.process("Localizable.xcstrings")],
+            resources: [.process("Localizable.xcstrings"), .process("Resources")],
             // An unbundled executable declares its languages in an embedded Info.plist: without
             // it Foundation picks English whatever the system language is.
             linkerSettings: [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT",

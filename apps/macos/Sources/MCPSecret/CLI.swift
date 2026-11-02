@@ -12,6 +12,36 @@ struct CLI: Sendable, Equatable {
         .deletingLastPathComponent().deletingLastPathComponent()
         .appending(path: ".venv/bin/mcp-secret").path
 
+    /// What a session starts with: that venv when it is there (`swift run`), else where
+    /// `uv tool install` puts the core of a downloaded app.
+    static var startPath: String {
+        FileManager.default.isExecutableFile(atPath: defaultPath)
+            ? defaultPath : NSHomeDirectory() + "/.local/bin/mcp-secret"
+    }
+
+    /// The core's wheel, which ships in the app's Resources, and its version (from the file name).
+    /// nil outside a release app (scripts/release.sh).
+    static func shippedWheel(resources: URL? = Bundle.main.resourceURL) -> (url: URL, version: String)? {
+        guard let dir = resources,
+              let name = try? FileManager.default.contentsOfDirectory(atPath: dir.path)
+                  .first(where: { $0.hasSuffix(".whl") }),
+              let version = name.split(separator: "-").dropFirst().first
+        else { return nil }
+        return (dir.appending(path: name), String(version))
+    }
+
+    /// What a first run pastes in Terminal: uv (fetched if missing), then the shipped wheel and the
+    /// pins next to it. Also the update: `--reinstall` replaces a core of another version.
+    /// It `cd`s into Resources and passes relative paths: uv before 0.13 cuts an absolute one at
+    /// the first space ("mcp-secret 2.app", a second download).
+    static func installCommand(resources: URL? = Bundle.main.resourceURL) -> String? {
+        guard let wheel = shippedWheel(resources: resources) else { return nil }
+        let dir = "'" + wheel.url.deletingLastPathComponent().path.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+        return #"export PATH="$HOME/.local/bin:$PATH"; command -v uv >/dev/null || "#
+            + "curl -LsSf https://astral.sh/uv/install.sh | sh; cd \(dir) && "
+            + "uv tool install --force --reinstall --python 3.12 -c constraints.txt ./\(wheel.url.lastPathComponent)"
+    }
+
     func process(_ args: [String], stdout: Pipe) -> Process {
         let process = Process()
         process.executableURL = executable
@@ -301,6 +331,8 @@ struct Status: Decodable, Equatable, Sendable {
     var index: Bool
     var docs: Int
     var chunks: Int
+    /// The core's version; absent from cores older than the check.
+    var version: String?
 }
 
 /// Google Drive: an OAuth client given, the account connected, the folders mirrored.

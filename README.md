@@ -14,12 +14,16 @@ with the body, so whatever detection misses there is published like a miss in th
   no file writes anywhere, no peeking at or signalling other processes. It refuses to start if
   the sandbox is not active.
 
+> **Not a guarantee of anonymity.** Detection recall is below 1: a value the detector misses
+> reaches the agent in clear. Read [Residual risks](#residual-risks) before trusting it with
+> sensitive files.
+
 ## Install
 
-macOS, [uv](https://docs.astral.sh/uv/):
+macOS, [uv](https://docs.astral.sh/uv/). Prefer an app? See [Try the app](#try-the-app).
 
 ```sh
-git clone <this repo> mcp_secret && cd mcp_secret
+git clone https://github.com/FruttoCheap/Anonim.git && cd Anonim
 uv sync
 uv run mcp-secret models     # one-time model download; with `drive`, the only network use
 ```
@@ -155,7 +159,8 @@ tokens, not values.
 
 ## UI
 
-A macOS app (SwiftUI, macOS 15+) for personal use from this repo: no bundle, no signing. It
+A macOS app (SwiftUI, macOS 15+). From this repo it runs unbundled, as below; the signed,
+notarized build is on the Releases page ([Try the app](#try-the-app)). It
 only runs the CLI with `--json` ([docs/cli-json.md](docs/cli-json.md)); it never opens the
 databases or the deny/allow lists, never starts `serve`, never loads a model.
 
@@ -163,7 +168,12 @@ databases or the deny/allow lists, never starts `serve`, never loads a model.
 swift run --package-path apps/macos MCPSecret
 ```
 
-- Drop files and folders on the sidebar (or ⌘O) and watch them index; each document shows its
+- The window opens on the simple view: drop one file (or ⌘O) and it is indexed like any other,
+  the original on the left, what the agent sees on the right; drag that `.md` out (or Save…).
+  Select a value, or text, and choose whether to mask it in this document only (Mask Here, Don't
+  Mask Here) or everywhere (Always Mask, Never Mask). The button at the top right, or ⇧⌘A,
+  switches to the advanced view described below.
+- Advanced view: drop files and folders on the sidebar (or ⌘O) and watch them index; each document shows its
   state: indexed, unchanged, error, file missing, changed since indexing.
 - A document opens in two columns: the original in clear, each masked value tinted by type and
   tagged with its token (legend on top), and what the agent sees. Select a value to light up
@@ -193,12 +203,44 @@ English). Tests: `swift test --package-path apps/macos` (one of them drives the 
 `SCREENSHOTS=<dir>` in front of it, with `--filter screenshots`, draws the main screens in light
 and dark.
 
+## Try the app
+
+A Mac (Apple Silicon or Intel), macOS 15+, about 4 GB of disk. No repo, no Xcode. On Intel the
+core installs older pinned versions (torch 2.2.2, docling 2.73, gliner 0.2.22: nothing newer
+publishes an Intel wheel), see `[tool.uv]` in `pyproject.toml`.
+
+1. Download `mcp-secret-<version>.zip` from the
+   [latest release](https://github.com/FruttoCheap/Anonim/releases/latest), unzip it, drag
+   `mcp-secret.app` to Applications and open it.
+2. The first launch says "Install the core". Click Copy Command, Open Terminal, paste, press
+   Return. It installs [uv](https://docs.astral.sh/uv/) from astral.sh if you have none, then the
+   core (and its Python dependencies, from PyPI) into `~/.local/share/uv/tools/mcp-secret`: a few
+   minutes, network needed. Back in the app, Check Again.
+3. The Setup Guide takes over: download the models (once, about 2 GB, from Hugging Face), add
+   documents, connect Claude Desktop (then restart Claude). After that the only network use is
+   `drive`, if you connect Google Drive.
+
+Update: unzip the new version over the old one and open it: its core has another version, so
+step 2 comes back; run its command again. Remove everything: delete the app, run `uv tool uninstall mcp-secret`,
+and delete `~/Library/Application Support/mcp-secret` (the index and the token map).
+
 ## Develop
 
 ```sh
 uv run ruff check && uv run pytest    # needs `mcp-secret models` once
 ```
 
+Release: once, `xcrun notarytool store-credentials mcp-secret` (Apple ID, app-specific
+password); then `./scripts/release.sh` writes `dist/mcp-secret-<version>.zip`, the version
+being `pyproject.toml`'s. The app carries the core's wheel and pinned dependencies
+(`uv export`), and asks for the install again whenever the core's `status` version differs. `SIGN_ID=- NOTARIZE=0 ./scripts/release.sh`
+builds an ad-hoc signed app to check the bundle on this Mac.
+
 `tests/test_leak.py` hides canaries in every corner of a DOCX, PDF, PNG, XLSX, EML and HTML,
 ingests them, drives `serve` through a real MCP client and checks that no canary reaches
 `public.db` or tool output; it also probes the sandbox and kills an ingest mid-transaction.
+
+## License
+
+[MIT](LICENSE). Models and dependencies keep their own licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
+Security reports: [SECURITY.md](SECURITY.md).

@@ -22,6 +22,11 @@ struct MCPSecretApp: App {
 @MainActor final class Delegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        if let icon = Bundle.module.image(forResource: "AppIcon")
+            ?? Bundle.module.url(forResource: "AppIcon", withExtension: "icns").flatMap(NSImage.init(contentsOf:))
+            ?? Bundle.module.url(forResource: "AppIcon", withExtension: "png").flatMap(NSImage.init(contentsOf:)) {
+            NSApp.applicationIconImage = icon
+        }
         NSApp.activate()
     }
 
@@ -33,73 +38,98 @@ struct MainView: View {
     /// Row ids; one document opens, several wait for an action (right-click, drag, Delete).
     @State var selection: Set<String> = []
     @State var guide = false
+    /// The full interface; the window opens on the simple one (one file in, its anonymized text out).
+    @State var advanced = false
     @State private var importing = false
     enum Pane { case documents, graph, values }
     @State var pane = Pane.documents
     @State private var graph = GraphModel()
+    /// The advanced interface takes folders too.
+    private var importable: [UTType] { advanced ? [.item, .folder] : [.item] }
 
     var body: some View {
-        NavigationSplitView {
-            Sidebar(selection: $selection, importing: $importing)
-                .navigationSplitViewColumnWidth(min: 240, ideal: 290)
-        } detail: {
-            if guide {
+        Group {
+            if advanced {
+                NavigationSplitView {
+                    Sidebar(selection: $selection, importing: $importing)
+                        .navigationSplitViewColumnWidth(min: 240, ideal: 290)
+                } detail: {
+                    if guide {
+                        Guide(importing: $importing) { guide = false }
+                    } else if pane == .graph {
+                        GraphView(model: graph) { id in
+                            selection = [id]
+                            pane = .documents
+                        }
+                    } else if pane == .values {
+                        ValuesView { id in
+                            selection = [id]
+                            pane = .documents
+                        }
+                    } else if selection.count == 1, let id = selection.first {
+                        DocumentView(model: DocumentModel(app: app, docId: id)).id(id)
+                    } else if selection.count > 1 {
+                        ContentUnavailableView(L("\(selection.count) documents selected"), systemImage: "doc.on.doc",
+                                               description: Text(L("Right-click for actions, or drag them out to export what the agent sees.")))
+                    } else {
+                        ContentUnavailableView(L("No document selected"), systemImage: "doc.text.magnifyingglass",
+                                               description: Text(L("Pick a document on the left, or drop files and folders there.")))
+                    }
+                }
+            } else if guide {
                 Guide(importing: $importing) { guide = false }
-            } else if pane == .graph {
-                GraphView(model: graph) { id in
-                    selection = [id]
-                    pane = .documents
-                }
-            } else if pane == .values {
-                ValuesView { id in
-                    selection = [id]
-                    pane = .documents
-                }
-            } else if selection.count == 1, let id = selection.first {
-                DocumentView(model: DocumentModel(app: app, docId: id)).id(id)
-            } else if selection.count > 1 {
-                ContentUnavailableView(L("\(selection.count) documents selected"), systemImage: "doc.on.doc",
-                                       description: Text(L("Right-click for actions, or drag them out to export what the agent sees.")))
             } else {
-                ContentUnavailableView(L("No document selected"), systemImage: "doc.text.magnifyingglass",
-                                       description: Text(L("Pick a document on the left, or drop files and folders there.")))
+                SimpleView(importing: $importing)
             }
         }
         .frame(minWidth: 960, minHeight: 600)
         .onChange(of: selection) { if !selection.isEmpty { pane = .documents } }
         .toolbar {
-            Picker(L("View"), selection: $pane) {
-                Label(L("Documents"), systemImage: "doc.text").tag(Pane.documents)
-                Label(L("Graph"), systemImage: "point.3.connected.trianglepath.dotted").tag(Pane.graph)
-                Label(L("Masked Values"), systemImage: "eye.slash").tag(Pane.values)
+            Button { advanced.toggle() } label: {
+                Label(advanced ? L("Simple View") : L("Advanced View"),
+                      systemImage: advanced ? "rectangle.split.2x1" : "slider.horizontal.3")
             }
-            .pickerStyle(.segmented)
-            .help(L("Documents one by one, the graph of what links them, or every value masked and where."))
-            Button { importing = true } label: { Label(L("Add Documents…"), systemImage: "plus") }
-                .keyboardShortcut("o")
-                .disabled(app.job != nil)
-            Button { Task { await app.reindexAll() } } label: { Label(L("Re-index All"), systemImage: "arrow.clockwise") }
-                .help(L("Index every document again: applies what you chose not to mask everywhere."))
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(app.job != nil || app.docs.isEmpty)
-            if app.drive?.folders.isEmpty == false {  // folders are added in Settings
-                Button { Task { await app.syncDrive() } } label: {
-                    Label(L("Sync Google Drive"), systemImage: "icloud.and.arrow.down")
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+            if advanced {
+                Picker(L("View"), selection: $pane) {
+                    Label(L("Documents"), systemImage: "doc.text").tag(Pane.documents)
+                    Label(L("Graph"), systemImage: "point.3.connected.trianglepath.dotted").tag(Pane.graph)
+                    Label(L("Masked Values"), systemImage: "eye.slash").tag(Pane.values)
                 }
-                .help(L("Download what changed in your Google Drive folders, then index it."))
-                .disabled(app.job != nil || app.drive?.connected != true)
+                .pickerStyle(.segmented)
+                .help(L("Documents one by one, the graph of what links them, or every value masked and where."))
+                Button { importing = true } label: { Label(L("Add Documents…"), systemImage: "plus") }
+                    .keyboardShortcut("o")
+                    .disabled(app.job != nil)
+                Button { Task { await app.reindexAll() } } label: { Label(L("Re-index All"), systemImage: "arrow.clockwise") }
+                    .help(L("Index every document again: applies what you chose not to mask everywhere."))
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .disabled(app.job != nil || app.docs.isEmpty)
+                if app.drive?.folders.isEmpty == false {  // folders are added in Settings
+                    Button { Task { await app.syncDrive() } } label: {
+                        Label(L("Sync Google Drive"), systemImage: "icloud.and.arrow.down")
+                    }
+                    .help(L("Download what changed in your Google Drive folders, then index it."))
+                    .disabled(app.job != nil || app.drive?.connected != true)
+                }
+                Button { if let dir = chooseFolder() { Task { await app.export(dir) } } } label: {
+                    Label(L("Export for Cowork…"), systemImage: "square.and.arrow.up")
+                }
+                .help(L("Write the documents the agent sees to a folder, for Claude Cowork to work on."))
+                .disabled(app.job != nil || app.docs.isEmpty)
+                Button { guide = true } label: { Label(L("Setup Guide"), systemImage: "questionmark.circle") }
+                SettingsLink { Label(L("Settings…"), systemImage: "gearshape") }  // last: the far right
+            } else {
+                Button { importing = true } label: { Label(L("Open File…"), systemImage: "doc") }
+                    .keyboardShortcut("o")
+                    .disabled(app.job != nil)
             }
-            Button { if let dir = chooseFolder() { Task { await app.export(dir) } } } label: {
-                Label(L("Export for Cowork…"), systemImage: "square.and.arrow.up")
-            }
-            .help(L("Write the documents the agent sees to a folder, for Claude Cowork to work on."))
-            .disabled(app.job != nil || app.docs.isEmpty)
-            Button { guide = true } label: { Label(L("Setup Guide"), systemImage: "questionmark.circle") }
-            SettingsLink { Label(L("Settings…"), systemImage: "gearshape") }  // last: the far right
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.item, .folder],
-                      allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result { Task { await app.ingest(urls.map(\.path)) } }
+        .fileImporter(isPresented: $importing, allowedContentTypes: importable,
+                      allowsMultipleSelection: advanced) { result in
+            if case .success(let urls) = result {
+                Task { if advanced { await app.ingest(urls.map(\.path)) } else { await app.open(urls) } }
+            }
         }
         .alert(L("Exported"), isPresented: Binding(get: { app.notice != nil },
                                                   set: { if !$0 { app.notice = nil } })) {
@@ -111,12 +141,48 @@ struct MainView: View {
         } message: {
             Text(app.problem ?? "")
         }
-        .task {
+        .sheet(isPresented: Binding(get: { app.coreMissing }, set: { _ in })) {
+            CoreMissing().interactiveDismissDisabled()
+        }
+        .task(id: app.coreMissing) {  // again once the core is installed
             await app.refresh()
+            guard !app.coreMissing else { return }
             guide = guide || app.needsSetup
             if !app.needsSetup { app.warm() }  // the reviewer loads its models while you look
             await app.driveCommand()
         }
+    }
+}
+
+/// First launch of a downloaded app: the core is not installed. One command in Terminal does it.
+struct CoreMissing: View {
+    @Environment(AppModel.self) private var app
+    // outside a release app (`swift run`): the repo's own setup
+    private let command = CLI.installCommand() ?? "uv sync"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L("Install the core")).font(.title).bold()
+            Text(L("mcp-secret needs its core, a command-line program that is missing or is not the version of this app. Paste this in Terminal: it takes a few minutes and uses the network. Then come back here."))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(verbatim: command)
+                .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary, in: .rect(cornerRadius: 6))
+            HStack {
+                Button(L("Copy Command")) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                }
+                Button(L("Open Terminal")) {
+                    NSWorkspace.shared.open(URL(filePath: "/System/Applications/Utilities/Terminal.app"))
+                }
+                Spacer()
+                Button(L("Check Again")) { Task { await app.refresh() } }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(30)
+        .frame(width: 560)
     }
 }
 
@@ -312,14 +378,41 @@ struct JobView: View {
     }
 }
 
+/// One file in, what the agent sees of it out: the window opens on this. The file is indexed like
+/// any other, so the agent finds it; DocumentView has both previews and the drag-out.
+struct SimpleView: View {
+    @Environment(AppModel.self) private var app
+    @Binding var importing: Bool
+    @State private var targeted = false
+
+    var body: some View {
+        Group {
+            if let id = app.current {
+                DocumentView(model: DocumentModel(app: app, docId: id)).id(id)
+            } else {
+                DropZone(targeted: targeted, title: L("Drop a file here")) { importing = true }
+                    .frame(maxWidth: 420).padding(40).disabled(app.job != nil)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) { if let job = app.job { JobView(job: job) } }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard app.job == nil else { return false }
+            Task { await app.open(urls) }
+            return true
+        } isTargeted: { targeted = $0 }
+    }
+}
+
 struct DropZone: View {
     var targeted: Bool
+    var title = L("Drop files and folders here")
     var choose: () -> Void
 
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: "tray.and.arrow.down").font(.title2).accessibilityHidden(true)
-            Text(L("Drop files and folders here")).font(.callout)
+            Text(title).font(.callout)
             Button(L("Choose…"), action: choose).controlSize(.small)
         }
         .frame(maxWidth: .infinity, minHeight: 96)
@@ -330,7 +423,7 @@ struct DropZone: View {
                 .foregroundStyle(targeted ? Color.accentColor : .secondary)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(L("Drop files and folders here"))
+        .accessibilityLabel(title)
     }
 }
 
@@ -352,7 +445,7 @@ struct Guide: View {
                     Button(L("Download")) { Task { await app.downloadModels() } }.disabled(app.job != nil)
                 }
                 step(2, L("Add your documents"),
-                     L("Drop files and folders on the list on the left, or choose them. They are read here, on this Mac."),
+                     L("Drop your documents in the window, or choose them. They are read here, on this Mac."),
                      done: (app.status?.docs ?? 0) > 0) {
                     Button(L("Choose…")) { importing = true }
                         .disabled(app.job != nil || app.status?.models != true)
