@@ -168,6 +168,11 @@ databases or the deny/allow lists, never starts `serve`, never loads a model.
 swift run --package-path apps/macos MCPSecret
 ```
 
+Windows and Linux: `uv run mcp-secret-gui` (on Windows also `.venv\Scripts\mcp-secret-gui.exe`,
+no console). A smaller tkinter UI on the same contract: add files or folders, the original with
+its masked values next to what the agent sees, Always/Never Mask a selection, Re-index All,
+Claude Desktop install, the model download on first launch.
+
 - The window opens on the simple view: drop one file (or ⌘O) and it is indexed like any other,
   the original on the left, what the agent sees on the right; drag that `.md` out (or Save…).
   Select a value, or text, and choose whether to mask it in this document only (Mask Here, Don't

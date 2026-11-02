@@ -12,6 +12,9 @@ dependencies = ["docling", "ocrmac; sys_platform == 'darwin'", "onnxruntime; sys
 [project.scripts]
 mcp-secret = "mcp_secret.cli:main"
 
+[project.gui-scripts]  # Windows: an .exe with no console window
+mcp-secret-gui = "mcp_secret.gui:main"
+
 [dependency-groups]
 dev = ["pytest", "ruff", "faker"]
 
