@@ -31,22 +31,24 @@ def test_open_then_always_mask(tmp_path, monkeypatch):
     def agent() -> str:
         return app.agent.get("1.0", "end")
 
-    def masked() -> list[str]:
-        r = app.clear.tag_ranges("pii")
+    def masked() -> list[str]:  # the values tinted by type in the original
+        r = [i for ty in gui.COLORS for i in app.clear.tag_ranges(ty)]
         return [app.clear.get(a, b) for a, b in zip(r[::2], r[1::2])]
 
     app.ingest(str(doc))
     until(lambda: app.docs)
     app.tree.selection_set(next(iter(app.docs)))
-    until(lambda: "[PERSONA_" in agent())
+    until(lambda: "[PERSONA_" in agent() and masked())
     assert {"Mario Rossi", "RSSMRA80A01H501U"} <= set(masked()) and "Mario" not in agent()
-    assert "marzo" in agent()
+    assert len(app.clear.window_names()) == len(masked())  # a token label after each value
+    assert app.agent.tag_ranges("PERSONA") and app.agent.tag_ranges("IBAN")  # tokens colored
+    app._find("[CF_1]")
+    assert app.agent.get(*app.agent.tag_ranges("hit")[:2]) == "[CF_1]"
 
     at = app.clear.search("marzo", "1.0")
     app.clear.tag_add("sel", at, f"{at}+5c")
     app.mask("deny")
-    until(lambda: "marzo" not in agent())
-    assert "marzo" in masked()
+    until(lambda: "marzo" not in agent() and "marzo" in masked())
     app.worker.stdin.close()
     app.worker.wait()
     root.destroy()
