@@ -7,7 +7,9 @@ license-files = ["LICENSE"]
 authors = [{ name = "Giulio Desana" }]
 requires-python = ">=3.12,<3.13"
 dependencies = ["docling", "ocrmac; sys_platform == 'darwin'", "onnxruntime; sys_platform != 'darwin'",  # RapidOCR's engine
-                "gliner", "mcp"]
+                "gliner", "mcp",
+                "pymupdf<2",  # export: PDF redaction. 2.x adds layout models and onnxruntime
+                "sv-ttk"]  # gui.py's theme
 
 [project.scripts]
 mcp-secret = "mcp_secret.cli:main"

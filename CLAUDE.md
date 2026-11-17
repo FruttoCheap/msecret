@@ -13,6 +13,8 @@ text returned by MCP tools.
 - The MCP process (`serve`) opens only public/public.db, read-only, under sandbox-exec:
   no network, no reads of $HOME except public/ and the Python runtime.
 - No path exists from a token back to its real value, not even for queries.
+- Decided by the user (2026-11-17): `export` writes PDF, DOCX, PPTX, XLSX originals with values
+  replaced (redact.py); their images, layout and whatever the detector does not read leave as is.
 Any choice weakening one of these is reported, not implemented.
 
 ## Rules

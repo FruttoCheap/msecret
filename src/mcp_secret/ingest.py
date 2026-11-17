@@ -145,11 +145,16 @@ def clean(text: str) -> str:
     return unicodedata.normalize("NFKC", "".join(c for c in text if unicodedata.category(c) != "Cf"))
 
 
+def heading(path: Path) -> str:
+    """The file name as ingest reads it: no folders; "_" and "-" as spaces, so the model and
+    known values see its words."""
+    return clean(" ".join(re.sub(r"[_-]", " ", path.name).split()))
+
+
 def source(path: Path) -> str:
-    """What ingest detects and masks: the file name on the first line (no folders; "_" and "-"
-    as spaces, so the model and known values see its words), a blank line, the text. Detected
-    with the text, the name gets its context: "CV_Rossi.pdf" next to "Mario Rossi"."""
-    return clean(" ".join(re.sub(r"[_-]", " ", path.name).split()) + "\n\n" + parse(path))
+    """What ingest detects and masks: heading() on the first line, a blank line, the text.
+    Detected with the text, the name gets its context: "CV_Rossi.pdf" next to "Mario Rossi"."""
+    return clean(heading(path) + "\n\n" + parse(path))
 
 
 def norm(value: str) -> str:
@@ -392,7 +397,7 @@ def forget(con: sqlite3.Connection, doc_id: str) -> None:
         con.execute("DELETE FROM pub.chunks WHERE doc_id = ?", (doc_id,))
         con.execute("DELETE FROM pub.names WHERE doc_id = ?", (doc_id,))
         con.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
-        con.execute("DELETE FROM detected WHERE doc_id = ?", (doc_id,))
+        con.execute("DELETE FROM detected WHERE doc_id IN (?, ?)", (doc_id, f"{doc_id}:file"))  # redact.py
         con.execute("DELETE FROM cats WHERE doc_id = ?", (doc_id,))
 
 

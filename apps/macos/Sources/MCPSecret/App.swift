@@ -309,8 +309,11 @@ func dragTrace(_ line: String) {
     else { try? data.write(to: url) }
 }
 
-/// A document dragged out of the list: `<doc_id>.md` with what the agent sees, written when it
-/// is dropped (no name or title: the id is all the file says, as in `export`).
+/// A document dragged out of the list, written when it is dropped by `export --doc`: the original
+/// with tokens for values (`<doc_id>.pdf`, `.docx`…) or what the agent sees (`<doc_id>.md`).
+/// ponytail: declared Markdown, the type is known only once the core wrote the file; Finder copies
+/// the file URL, name and format as written. A generic type (.data) turns it into a file promise
+/// suggesting the name "data".
 struct Anonymized: Transferable {
     var cli: CLI
     var docId: String

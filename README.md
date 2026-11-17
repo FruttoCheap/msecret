@@ -110,6 +110,11 @@ exported fail (a `file` error).
   foreign street lines, label phrases the model tags as places, 8-digit staff numbers in birth
   tables, `/@word` URL paths, `Vite,0,0312345678`, an 8-digit landline after a number with a
   comma (`Bianchi 7,03456789` reads as an amount).
+- `export` rewrites the originals, and what the detector does not read leaves them as it is:
+  images (a photo, a signature, an ID pasted in a page), text drawn as shapes or in a font with
+  no Unicode map, embedded files, PDF text outside the page. A token takes the box of the value
+  it replaces, tiny where the value was short. A value Docling reads another way than the file
+  holds it (a CF in three formatted runs reads `RSSMRA 80A01 H501U`) gets another token there.
 - The sandbox cannot hide `sysctl KERN_PROCARGS2` (no sandbox rule gates it): a compromised
   `serve` could read the command lines of your other processes, and the environment of those
   without hardened runtime, and return them to the agent. Keep secrets out of the environment
@@ -145,11 +150,22 @@ new files, run scripts over all of them), write them to a folder and connect tha
 Cowork session:
 
 ```sh
-uv run mcp-secret export ~/Cowork/clienti    # pseudonymized/<doc_id>.md, one per document, and a guide
+uv run mcp-secret export ~/Cowork/clienti    # pseudonymized/<doc_id>.<ext>, one per document, and a guide
+uv run mcp-secret export ~/Desktop --doc <doc_id>    # one document, straight in that folder
 ```
 
-The files are what `show` prints: pseudonymized, named by random id, nothing else. `export` runs
-in the `serve` sandbox (it reads `public/` and writes that one folder, never `private/`) and makes
+A PDF, Word, PowerPoint or Excel document whose file is still there comes out in its own format:
+the file itself, every value ingest masks replaced by its token wherever the file keeps text
+(body, headers, footers, notes, comments, alt text, cells, sheet names, form fields), metadata,
+thumbnail, link targets and comment authors removed, a workbook's formulas replaced by their
+values. Layout and images stay. Any other document comes out as what `show` prints, its
+pseudonymized name on the first line, as `<doc_id>.md`: also a scan (a page without text, or
+mostly one image), a workbook with pivot tables or links to other files, a file with OLE objects.
+Files are named by random id; the guide lists their pseudonymized names.
+
+To rewrite the originals `export` reads them and `private/`: it runs boxed like `ingest` (no
+network), not like `serve`, and it masks like ingest, learning a value found only in the file (a
+name in a header Docling skips): from then on it is masked in `public.db` too. It makes
 `pseudonymized/` match the index, so a document removed or scrubbed by a later `ingest` disappears at the
 next `export`: run it after every `ingest` (the app does, once you chose a folder). The folder is
 a second copy of what the agent can read: anything the detector missed is readable there too.
@@ -169,14 +185,15 @@ swift run --package-path apps/macos MCPSecret
 ```
 
 Windows and Linux: `uv run mcp-secret-gui` (on Windows also `.venv\Scripts\mcp-secret-gui.exe`,
-no console). A smaller tkinter UI on the same contract: add files or folders, the original with
+no console). A smaller tkinter UI, Windows 11 style (sv-ttk), on the same contract: add files or folders, the original with
 its masked values tinted by type and tagged with their token next to what the agent sees (click
 a value to find its token there), Open File for the original in its own app, Always/Never Mask a
 selection, Re-index, Claude Desktop install, the model download on first launch. When the
 original cannot be read, its pane says why, with the last lines the review process wrote.
 
 - The window opens on the simple view: drop one file (or ⌘O) and it is indexed like any other,
-  the original on the left, what the agent sees on the right; drag that `.md` out (or Save…).
+  the original on the left, what the agent sees on the right; drag it out (or Save…): the
+  original with tokens for values, or `.md` (`export --doc`).
   Select a value, or text, and choose whether to mask it in this document only (Mask Here, Don't
   Mask Here) or everywhere (Always Mask, Never Mask). The button at the top right, or ⇧⌘A,
   switches to the advanced view described below.

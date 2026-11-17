@@ -98,22 +98,14 @@ struct CLI: Sendable, Equatable {
         return all
     }
 
-    /// What the agent sees of a document, as `export` writes it: its chunks a blank line apart.
-    func anonymized(_ docId: String) async throws -> String {
-        var chunks: [Chunk] = []
-        do {
-            chunks = try await events("show", docId).compactMap(\.chunk)
-        } catch let e as CLIError where e.error == "no_document" {}  // an empty file publishes no chunk
-        try Task.checkCancellation()  // a cancelled stream ends early: half a document
-        return chunks.map(\.text).joined(separator: "\n\n") + "\n"
-    }
-
-    /// `<docId>.md` in `folder`: the file's URL.
+    /// `export --doc`: the document in `folder`, its original format with tokens for values
+    /// (`<docId>.pdf`, `.docx`…) or what the agent sees (`<docId>.md`). The file's URL.
     @discardableResult
     func export(_ docId: String, to folder: URL) async throws -> URL {
-        let file = folder.appending(path: "\(docId).md")
-        try await anonymized(docId).write(to: file, atomically: true, encoding: .utf8)
-        return file
+        let done = try await events("export", "--doc", docId, "--", folder.path).compactMap(\.exported).first
+        try Task.checkCancellation()  // a cancelled stream ends early: no event
+        guard let name = done?.files.first else { throw CLIError(error: "failed", message: "export wrote nothing") }
+        return folder.appending(path: name)
     }
 
     /// A pipe's lines as they come. Not FileHandle.bytes: it reads every handle on one shared
@@ -296,11 +288,13 @@ struct Value: Decodable, Equatable, Sendable {
     var docIds: [String]
 }
 
-/// An `export`: the folder written, the files in its `docs/`, the stale ones deleted.
+/// An `export`: the folder written, the files written in it (or in its `pseudonymized/`), the
+/// stale ones deleted.
 struct Exported: Decodable, Equatable, Sendable {
     var dir: String
     var docs: Int
     var removed: Int
+    var files: [String]
 }
 
 struct Chunk: Decodable, Equatable, Sendable {

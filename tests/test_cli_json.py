@@ -304,7 +304,8 @@ def test_export(tmp_path):
         assert run(env, "export", str(bad), code=1)[0]["error"] == "bad_dir"
 
     [ev] = run(env, "export", str(work))  # a new folder, made inside the sandbox
-    assert ev == {"event": "export", "dir": str(work.resolve()), "docs": 2, "removed": 0}
+    assert ev == {"event": "export", "dir": str(work.resolve()), "docs": 2, "removed": 0,
+                  "files": sorted(f"{d['doc_id']}.md" for d in (a, b))}  # .txt: as the agent sees it
     files = {p.name: p for p in (work / "pseudonymized").iterdir()}
     assert sorted(files) == sorted(f"{d['doc_id']}.md" for d in (a, b))
     for d in (a, b):  # what `show` prints, a document per file

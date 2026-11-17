@@ -36,12 +36,11 @@ def _any(kind: str, paths) -> str:
     return " ".join(f"({kind} {_q(p)})" for p in paths)
 
 
-def profile(root: Path | None = None, writable: Path | None = None) -> str:
+def profile(root: Path | None = None) -> str:
     """sandbox-exec profile: no network. With `root` (serve): no reads of $HOME, the data root,
     other users, volumes and temp dirs except public/ and the Python runtime; no file writes
     anywhere (inherited stdio fds still work); no exec but Python itself; no mach services; no
-    process info or signals but its own. With `writable` (export), that folder is also readable and
-    writable."""
+    process info or signals but its own."""
     sbpl = "(version 1)(allow default)(deny network*)"
     if root is None:
         return sbpl
@@ -60,9 +59,8 @@ def profile(root: Path | None = None, writable: Path | None = None) -> str:
         "(deny file-write*)",
         '(allow file-write-data (literal "/dev/null") (literal "/dev/dtracehelper"))',
         # SQLite lstat()s every path component when opening public.db
-        f"(allow file-read-metadata {_any('literal', [*pub.parents, *(writable.parents if writable else [])])})",
+        f"(allow file-read-metadata {_any('literal', pub.parents)})",
         f"(allow file-read* {_any('subpath', [pub, *sorted(runtime)])})",
-        f"(allow file-read* file-write* {_any('subpath', [writable])})" if writable else "",
         # sandbox-exec execs the interpreter itself, after the profile applies
         "(deny process-exec*)",
         f"(allow process-exec {_any('literal', {sys.executable, os.path.realpath(sys.executable)})})",
@@ -98,18 +96,19 @@ def _opens(args: argparse.Namespace, root: Path, writable: Path | None) -> tuple
     from mcp_secret import winbox
 
     run = winbox.runtime()
-    if args.cmd in ("serve", "export"):
-        if writable:
-            writable.mkdir(parents=True, exist_ok=True)  # an ACL needs the folder to exist
-        return [root / "public", *run], [writable] if writable else []
+    if args.cmd == "serve":
+        return [root / "public", *run], []
     from docling.datamodel.settings import settings
     from huggingface_hub.constants import HF_HUB_CACHE
 
     models = [HF_HUB_CACHE, settings.cache_dir]
     if args.cmd == "ingest":
         return [*(p.expanduser().resolve() for p in args.paths), *run, *models], [root]
-    priv = root / "private" / "private.db"  # review reads the originals where they are
+    priv = root / "private" / "private.db"  # review and export read the originals where they are
     dirs = {str(Path(p).parent) for (p,) in _ro(priv).execute("SELECT path FROM docs")} if priv.exists() else ()
+    if args.cmd == "export":  # it learns values like ingest, and writes one folder
+        writable.mkdir(parents=True, exist_ok=True)  # an ACL needs the folder to exist
+        return [root, *dirs, *run, *models], [root, writable]
     return [root, *dirs, *run, *models], []
 
 
@@ -127,8 +126,8 @@ def _become(argv: list[str]) -> NoReturn:
 
 
 def _sandboxed(args: argparse.Namespace, root: Path | None, *must_fail, writable: Path | None = None) -> None:
-    """Re-exec under sandbox-exec (Windows: an AppContainer, winbox) with profile(root, writable),
-    then prove it. Fails closed."""
+    """Re-exec under sandbox-exec with profile(root) (Windows: an AppContainer, winbox, that may
+    also write `writable`), then prove it. Fails closed."""
     if not args.sandboxed and sys.platform == "win32":
         from mcp_secret import winbox
 
@@ -139,7 +138,7 @@ def _sandboxed(args: argparse.Namespace, root: Path | None, *must_fail, writable
         sys.exit(winbox.run([sys.executable, "-I", "-B", *argv], args.cmd, root / f".winbox-{args.cmd}.json",
                             read, write))
     if not args.sandboxed:  # exec raises if sandbox-exec is missing; a bad profile exits non-zero
-        cmd = sandbox_cmd(profile(root, writable), "-m", "mcp_secret.cli", "--sandboxed", *sys.argv[1:])
+        cmd = sandbox_cmd(profile(root), "-m", "mcp_secret.cli", "--sandboxed", *sys.argv[1:])
         os.execv(SANDBOX, cmd)
     if sys.platform == "win32":  # the token, not a socket: see winbox.contained
         from mcp_secret import winbox
@@ -191,10 +190,10 @@ def _ro(db: Path) -> sqlite3.Connection:
     return sqlite3.connect(db.as_uri() + "?mode=ro", uri=True)
 
 
-def _replace(path: Path, text: str, mode: int) -> None:
+def _replace(path: Path, data: str | bytes, mode: int) -> None:
     """Write `path` atomically (a crash leaves the old file or the new one, never half)."""
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
+    tmp.write_bytes(data.encode() if isinstance(data, str) else data)
     tmp.chmod(mode)
     os.replace(tmp, path)
 
@@ -333,40 +332,74 @@ def show(db: Path, doc_id: str) -> None:
         out({"event": "chunk", "chunk_id": rowid, "text": text}, f"--- chunk {rowid} ---\n{text}\n")
 
 
-def export(root: Path, dest: Path) -> None:
-    """The published documents as `dest/pseudonymized/<doc_id>.md`, and a guide for the agent, for
-    a folder it works in (Claude Cowork). Reads public.db only. The subfolder is made to match it:
-    what is no longer indexed (a scrubbed or removed document) goes. Only files named like ours are
-    ever deleted or replaced: the folder may be a project that has files of its own."""
+def export(root: Path, dest: Path, only: list[str]) -> None:
+    """The published documents as files. A PDF, DOCX, PPTX or XLSX whose file is there is the file
+    itself, its values replaced by their tokens (redact.py): `<doc_id>.<ext>`. Any other, or one
+    redact.py leaves out (a scan), is what the agent sees: `<doc_id>.md`, its pseudonymized file
+    name then its chunks. Without `only`: in `dest/pseudonymized/`, with a guide for the agent, for
+    a folder it works in (Claude Cowork); the subfolder is made to match the index, and only files
+    named like ours are ever deleted or replaced there: the folder may be a project with files of
+    its own. With `only`: those documents, straight in `dest`, nothing else touched."""
+    from mcp_secret import ingest, redact
     from mcp_secret.server import TOKENS, names
 
-    db = root / "public" / "public.db"
-    if not db.exists():
+    if not (root / "public" / "public.db").exists():
         fail("no_index", NO_INDEX)
-    con = _ro(db)
-    docs: dict[str, list[str]] = {}
-    for doc_id, text in con.execute("SELECT doc_id, text FROM chunks ORDER BY doc_id, seq"):
-        docs.setdefault(doc_id, []).append(text)
-    for doc_id, name in names(con).items():  # its first line: the agent cites it by name
-        if doc_id in docs:
-            docs[doc_id].insert(0, name)
-    os.umask(0o022)  # _private() set 0077: the agent may read through another uid (a VM)
-    folder = dest / "pseudonymized"
+    con = ingest.connect(root)
+    docs = [d for (d,) in con.execute("SELECT DISTINCT doc_id FROM pub.chunks ORDER BY doc_id")]
+    if missing := [d for d in only if d not in docs]:
+        fail("no_document", f"no document {missing[0]}")
+    docs = only or docs
+    with con:
+        con.execute("BEGIN IMMEDIATE")
+        allow, public, _ = ingest.lists(con, root / "private")
+    paths = {d: Path(p) for d, p in con.execute("SELECT id, path FROM docs")}
+    folder = dest if only else dest / "pseudonymized"
+    old = os.umask(0o022)  # the agent may read through another uid (a VM); private.db stays 0600
     folder.mkdir(parents=True, exist_ok=True)
-    for doc_id, parts in docs.items():
-        _replace(folder / f"{doc_id}.md", "\n\n".join(parts) + "\n", 0o644)
-    keep = {f"{doc_id}.md" for doc_id in docs}
-    ours = re.compile(r"[0-9a-f]{16}\.md(\.tmp)?")  # the .tmp a killed export left, too
-    stale = [p for p in folder.iterdir() if ours.fullmatch(p.name) and p.name not in keep]
-    for p in stale:
-        p.unlink()
-    _replace(dest / "PSEUDONYMIZED.md", f"# Pseudonymized documents\n\n{TOKENS}\n\n"
-             "`pseudonymized/<id>.md` is one document each (random id); its first line is the file "
-             "name, pseudonymized too: cite documents by that name. Search "
-             "a token across the folder to find every document about that entity. `mcp-secret "
-             "export` rewrites `pseudonymized/`: put your own files elsewhere.\n", 0o644)
-    out({"event": "export", "dir": str(dest), "docs": len(docs), "removed": len(stale)},
-        f"{len(docs)} documents exported to {dest}")
+    os.umask(old)
+
+    def original(doc_id: str) -> str | None:
+        path = paths.get(doc_id, Path())
+        if path.suffix.lower() not in redact.SUFFIXES or not path.exists():
+            return None
+        try:
+            data = redact.redact(con, doc_id, path, allow, public)
+        except Exception as e:  # noqa: BLE001 - a file it cannot rewrite goes out as Markdown
+            print(f"export: {type(e).__name__}", file=sys.stderr)
+            return None
+        if data:
+            _replace(folder / (name := doc_id + path.suffix.lower()), data, 0o644)
+            return name
+        return None
+
+    learned = con.execute("SELECT count(*) FROM entities").fetchone()
+    files = {d: original(d) for d in docs}
+    if con.execute("SELECT count(*) FROM entities").fetchone() != learned:
+        files = {d: original(d) for d in docs}  # a value one file taught masks it in those before
+    title = names(con)  # pub.names: private.db has no table of that name
+    for doc_id in [d for d, f in files.items() if not f]:  # chunks read now: after the sweeps
+        parts = [t for (t,) in con.execute("SELECT text FROM pub.chunks WHERE doc_id = ? "
+                                           "ORDER BY seq", (doc_id,))]
+        files[doc_id] = f"{doc_id}.md"
+        text = "\n\n".join([*filter(None, [title.get(doc_id)]), *parts]) + "\n"
+        _replace(folder / files[doc_id], text, 0o644)
+    stale = []
+    if not only:
+        ours = re.compile(r"[0-9a-f]{16}\.(md|pdf|docx|pptx|xlsx)(\.tmp)?")  # a killed export's .tmp too
+        stale = [p for p in folder.iterdir() if ours.fullmatch(p.name) and p.name not in files.values()]
+        for p in stale:
+            p.unlink()
+        index = "".join(f"\n- `pseudonymized/{f}`: {title.get(d, '')}" for d, f in files.items())
+        _replace(dest / "PSEUDONYMIZED.md", f"# Pseudonymized documents\n\n{TOKENS}\n\n"
+                 "`pseudonymized/` holds one file per document, named by a random id: the original "
+                 "PDF, Word, PowerPoint or Excel file with its personal data replaced by tokens, or "
+                 "Markdown (its first line the file name). Cite documents by their file name, "
+                 "pseudonymized too, listed below. Search a token across the folder to find every "
+                 "document about that entity. `mcp-secret export` rewrites `pseudonymized/`: put "
+                 f"your own files elsewhere.\n{index}\n", 0o644)
+    out({"event": "export", "dir": str(dest), "docs": len(files), "removed": len(stale),
+         "files": list(files.values())}, f"{len(files)} documents exported to {dest}")
 
 
 def _review(root: Path, doc_id: str) -> dict:
@@ -576,8 +609,11 @@ def main() -> None:
                    "them in what the agent sees gets the category")
     sub.add_parser("tokens", help="every published token, values in clear"
                    ).add_argument("--type", action="append", default=[], help="only this type (repeatable)")
-    sub.add_parser("export", help="write the pseudonymized documents to a folder an agent works "
-                   "in (Claude Cowork)").add_argument("dir", type=Path)
+    p = sub.add_parser("export", help="write the pseudonymized documents to a folder an agent works "
+                       "in (Claude Cowork), each in its own format where it can be")
+    p.add_argument("dir", type=Path)
+    p.add_argument("--doc", action="append", default=[], metavar="DOC_ID",
+                   help="only this document, straight in dir (repeatable)")
     p = sub.add_parser("desktop-config", help="show, add or remove mcp-secret in Claude Desktop")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--install", action="store_true")
@@ -610,17 +646,17 @@ def main() -> None:
         from mcp_secret import server
 
         return server.run(db)
-    if args.cmd == "export":  # reads public/, writes one folder: boxed like serve
+    if args.cmd == "export":  # reads the originals and private/ like ingest, writes one folder
         os.environ["HF_HUB_OFFLINE"] = "1"
         dest = args.dir.expanduser().resolve()
-        if root.is_relative_to(dest) or dest.is_relative_to(root):  # the box would open private/
+        if root.is_relative_to(dest) or dest.is_relative_to(root):  # it would publish private/
             _json = _jsonl() if args.json else None
             fail("bad_dir", "choose a folder apart from the data root")
         if not args.sandboxed:
             _private(priv)
-            sys.argv[-1] = str(dest)  # the re-exec runs from /, where a relative path means another folder
-            os.chdir("/")
-        _sandboxed(args, root, lambda: os.listdir(priv), writable=dest)
+            sys.argv[1:] = [*(["--json"] if args.json else []), "export",  # the Windows box starts
+                            *(x for d in args.doc for x in ("--doc", d)), "--", str(dest)]  # in its own folder
+        _sandboxed(args, None, writable=dest)
     if args.cmd in ("ingest", "review"):  # parse and detect: no network
         os.environ["HF_HUB_OFFLINE"] = "1"
         if args.cmd == "ingest" and not args.sandboxed:
@@ -681,7 +717,7 @@ def main() -> None:
         elif args.cmd == "tokens":
             tokens(root, args.type)
         elif args.cmd == "export":
-            export(root, dest)
+            export(root, dest, args.doc)
         elif args.cmd == "drive":
             drive_cmd(priv, args.action, args.arg)
         else:

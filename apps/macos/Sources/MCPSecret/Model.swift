@@ -228,15 +228,12 @@ final class AppModel {
         }
     }
 
-    /// `export` of some documents: `<doc_id>.md` in `dir`, what the agent sees. Unlike the Cowork
-    /// folder it keeps nothing: no README, nothing deleted, never refreshed.
+    /// `export --doc` of some documents, in one core call (the detector loads once): each in
+    /// `dir` in its own format where it can be, else `<doc_id>.md`. Unlike the Cowork folder it
+    /// keeps nothing: no README, nothing deleted, never refreshed.
     func export(_ docIds: [String], to dir: String) async {
         await perform(L("Exporting")) { [self] in
-            job?.total = docIds.count
-            for id in docIds {
-                try await cli.export(id, to: URL(filePath: dir))
-                job?.done += 1
-            }
+            _ = try await cli.events(["export"] + docIds.flatMap { ["--doc", $0] } + ["--", dir])
         }
     }
 

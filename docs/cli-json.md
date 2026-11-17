@@ -46,7 +46,7 @@ mcp-secret --json <command> [arguments]
 | `error` | When |
 | --- | --- |
 | `no_index` | `show`, `review`, `cat`, `forget`, `tokens`, `export` before the first `ingest`. |
-| `no_document` | `show`, `review`, `cat` with an unknown `doc_id`. `show` says it also for a document with 0 chunks (an empty file): check `chunks` in `list` first. |
+| `no_document` | `show`, `review`, `cat`, `export --doc` with an unknown `doc_id`. `show` says it also for a document with 0 chunks (an empty file): check `chunks` in `list` first. |
 | `bad_value` | `deny`, `allow`, `cat`: the value or name is empty once normalized. `rules --set`: the name is empty or holds `:`. |
 | `bad_dir` | `export`: the folder is the data root, inside it or around it. Nothing is written. |
 | `bad_config` | `desktop-config`: Claude Desktop's config is not a JSON object whose `mcpServers` is an object. Nothing is written. |
@@ -286,21 +286,33 @@ documents in the graph. `--type` keeps only those types. Reads every chunk.
 | `value` | string or null | normalized as ingest stores it (lowercase); null for a token-shaped text no ingest wrote |
 | `doc_ids` | array of string | sorted |
 
-### export `<dir>`
+### export `<dir>` [`--doc <doc_id>`]...
 
-Writes what the agent sees to a folder an agent works in (Claude Cowork):
-`<dir>/pseudonymized/<doc_id>.md`, one file per document (its pseudonymized file name, then its
-chunks in order, blank line between), and `<dir>/PSEUDONYMIZED.md` telling the agent what the tokens are. It reads `public.db` only, inside the `serve` sandbox plus write
-access to `<dir>`; it never opens `private/`. `<dir>` is created if its parent exists.
+Writes the documents to a folder an agent works in (Claude Cowork):
+`<dir>/pseudonymized/<doc_id>.<ext>`, one file per document, and `<dir>/PSEUDONYMIZED.md` telling
+the agent what the tokens are and listing the files with their pseudonymized names. A PDF, DOCX,
+PPTX or XLSX whose file is still there is that file with every value ingest masks replaced by its
+token (`.pdf`, `.docx`, `.pptx`, `.xlsx`): metadata, link targets and comment authors removed,
+formulas replaced by their values, images and layout kept. Any other, and one it cannot rewrite
+(a scan, a workbook with pivot tables or external links, OLE objects, a damaged file: its error
+type on stderr), is `.md`: its pseudonymized file name, then its chunks in order, blank line
+between. With `--doc` (repeatable): only those documents, straight in `<dir>`, no guide, nothing
+deleted; an unknown id is a `no_document` error.
 
-`pseudonymized/` is made to match the index: a file named like an export (16 hex digits, `.md`
-or `.md.tmp`) that is not an indexed document's (removed or scrubbed since the last export, or
-left by a killed run) is deleted. Any other file, there or in `<dir>`, is left alone: `<dir>` may be
+It reads the files and `private/`, boxed like `ingest` (no network; on Windows, write access to
+the data root and `<dir>` only), and masks like ingest: a value only the file holds (a header
+Docling skips) is learned and swept from `public.db` too. The detector runs once per file
+content: an export with nothing changed reuses its spans. `<dir>` is created if its parent exists.
+
+`pseudonymized/` is made to match the index: a file named like an export (16 hex digits, `.md`,
+`.pdf`, `.docx`, `.pptx` or `.xlsx`, or the same with `.tmp`) that is not one this run wrote
+(removed or scrubbed since the last export, a document now in another format, or left by a
+killed run) is deleted. Any other file, there or in `<dir>`, is left alone: `<dir>` may be
 a folder with files of its own, and the agent can write its own there. Run it again after every
 `ingest`. One line.
 
 ```json
-{"event": "export", "dir": "/Users/me/Cowork", "docs": 12, "removed": 1}
+{"event": "export", "dir": "/Users/me/Cowork", "docs": 2, "removed": 1, "files": ["0a1b2c3d4e5f6a7b.pdf", "8c9d0e1f2a3b4c5d.md"]}
 ```
 
 | Field | Type | |
@@ -308,6 +320,7 @@ a folder with files of its own, and the agent can write its own there. Run it ag
 | `dir` | string | the folder, absolute |
 | `docs` | int | files written (documents with no chunk, an empty file, get none) |
 | `removed` | int | files deleted from `pseudonymized/` |
+| `files` | array of string | the file names written, in `pseudonymized/` (or `<dir>` with `--doc`) |
 
 ### desktop-config `[--install | --uninstall]`
 
@@ -401,5 +414,6 @@ during an ingest.
 `ingest`, `list`, `review`, `tokens`, `deny`/`allow` without an action and `drive sync` print
 paths, document text and values in clear. A UI keeps them in
 memory only: no logs, caches, temporary files or saved window state. Do not run these commands
-through an agent whose output leaves the machine. `show` prints only what the agent sees, and
-`export` writes only that: its folder is as public as `public.db`.
+through an agent whose output leaves the machine. `show` prints only what the agent sees. `export` writes
+that, or the original files with their values replaced: what the detector does not read in them
+(images, text drawn as shapes) is in clear there.

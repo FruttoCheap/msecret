@@ -10,13 +10,15 @@ import Testing
 struct Recorded {
     let dir = FileManager.default.temporaryDirectory.appending(path: "mcp-secret-ui-\(UUID().uuidString)")
 
-    init(_ answers: [String: (out: String, code: Int32)]) throws {
+    /// `scripts`: shell run for a command instead of a canned answer.
+    init(_ answers: [String: (out: String, code: Int32)], scripts: [String: String] = [:]) throws {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let log = dir.appending(path: "log").path
         var sh = "#!/bin/sh\necho \"$*\" >> '\(log)'\ncase \"$2\" in\n"
         for (command, (out, code)) in answers where command != "review" {
             sh += "\(command))" + (out.isEmpty ? "" : " cat <<'EOF'\n\(out)\nEOF\n") + " exit \(code);;\n"
         }
+        for (command, script) in scripts { sh += "\(command)) \(script)\n exit 0;;\n" }
         if let (out, code) = answers["review"] {
             sh += #"""
             review) while read -r id; do
@@ -80,8 +82,8 @@ let DRIVE_SYNC = """
         #expect(try Event.decode(#"{"event": "start", "steps": 2}"#) == .start(files: nil, steps: 2))
         #expect(try Event.decode(#"{"event": "step", "step": 1, "name": "docling"}"#) == .step(1, name: "docling"))
         #expect(try Event.decode(#"{"event": "done"}"#) == .done)
-        #expect(try Event.decode(#"{"event": "export", "dir": "/tmp/w", "docs": 2, "removed": 1}"#)
-                == .exported(Exported(dir: "/tmp/w", docs: 2, removed: 1)))
+        #expect(try Event.decode(#"{"event": "export", "dir": "/tmp/w", "docs": 2, "removed": 1, "files": ["a.pdf", "b.md"]}"#)
+                == .exported(Exported(dir: "/tmp/w", docs: 2, removed: 1, files: ["a.pdf", "b.md"])))
         #expect(try Event.decode(#"{"event": "deny", "action": "add", "changed": true}"#) == .edited(changed: true))
         #expect(try Event.decode(#"{"event": "allow", "action": "remove", "changed": false}"#) == .edited(changed: false))
         #expect(try Event.decode(SHOW) == .chunk(Chunk(chunkId: 7, text: "Contratto tra [PERSONA_1] (CF [CF_1]) e la ditta [ORG_1].\n\nPagamento entro marzo.\n")))
@@ -500,7 +502,7 @@ let CATEGORIZED = """
     @Test func aForgottenDocumentLeavesNoRowAndLeavesTheCoworkFolder() async throws {
         let rest = LIST.components(separatedBy: "\n").dropFirst().joined(separator: "\n")
         let core = try Recorded(["status": (STATUS, 0), "list": (rest, 0), "forget": ("", 0),
-                                 "export": (#"{"event": "export", "dir": "/tmp/w", "docs": 2, "removed": 1}"#, 0)])
+                                 "export": (#"{"event": "export", "dir": "/tmp/w", "docs": 2, "removed": 1, "files": []}"#, 0)])
         let app = AppModel(cliPath: core.path)
         app.docs = [a]
         app.outcome[a.path] = Doc(docId: a.docId, path: a.path, chunks: 1, status: "indexed", error: nil)
@@ -510,27 +512,19 @@ let CATEGORIZED = """
         #expect(core.calls.last == "--json export -- /tmp/w")
     }
 
-    @Test func exportWritesWhatTheAgentSeesAndNothingElse() async throws {
-        let core = try Recorded(["show": (SHOW, 0)])
-        let out = core.dir.appending(path: "out")
-        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    @Test func exportOfSomeDocumentsIsOneCoreCall() async throws {
+        let core = try Recorded(["export": (#"{"event": "export", "dir": "/out", "docs": 2, "removed": 0, "files": ["aaaaaaaaaaaaaaaa.pdf", "cccccccccccccccc.md"]}"#, 0)])
         let app = AppModel(cliPath: core.path)
-        await app.export(["aaaaaaaaaaaaaaaa", "cccccccccccccccc"], to: out.path)
+        await app.export(["aaaaaaaaaaaaaaaa", "cccccccccccccccc"], to: "/out")
         #expect(app.job == nil && app.problem == nil)
-        let files = try FileManager.default.contentsOfDirectory(atPath: out.path).sorted()
-        #expect(files == ["aaaaaaaaaaaaaaaa.md", "cccccccccccccccc.md"])  // no README, no folder
-        let chunk = try #require(try Event.decode(SHOW).chunk)
-        #expect(try String(contentsOf: out.appending(path: files[0]), encoding: .utf8) == chunk.text + "\n")
-        #expect(core.calls == ["--json show aaaaaaaaaaaaaaaa", "--json show cccccccccccccccc"])
+        #expect(core.calls == ["--json export --doc aaaaaaaaaaaaaaaa --doc cccccccccccccccc -- /out"])
     }
 
-    @Test func anEmptyDocumentIsAnEmptyFileAndACancelledReadWritesNothing() async throws {
-        let core = try Recorded(["show": (#"{"event": "error", "error": "no_document", "message": "no document x"}"#, 1)])
-        #expect(try await core.cli.anonymized("aaaaaaaaaaaaaaaa") == "\n")
+    @Test func aCancelledExportHandsNoFile() async throws {
+        let core = try Recorded(["export": (#"{"event": "export", "dir": "/out", "docs": 1, "removed": 0, "files": ["aaaaaaaaaaaaaaaa.md"]}"#, 0)])
         let task = Task { try await core.cli.export("aaaaaaaaaaaaaaaa", to: core.dir) }
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
-        #expect(!FileManager.default.fileExists(atPath: core.dir.appending(path: "aaaaaaaaaaaaaaaa.md").path))
     }
 }
 
@@ -567,13 +561,14 @@ let CATEGORIZED = """
 
 @MainActor @Suite struct DragPayload {
     @Test func everyRowOffersItsAnonymizedFile() async throws {
-        let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0), "show": (SHOW, 0)])
+        // `--json export --doc <id> -- <dir>`: the core writes the file and names it
+        let write = #"echo agent > "$6/$4.md"; printf '{"event": "export", "dir": "%s", "docs": 1, "removed": 0, "files": ["%s.md"]}\n' "$6" "$4""#
+        let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0)], scripts: ["export": write])
         let app = AppModel(cliPath: core.path)
         await app.refresh()
         let files = try await dragged(from: app, selecting: ["aaaaaaaaaaaaaaaa", "cccccccccccccccc"])
-        let chunk = try #require(try Event.decode(SHOW).chunk)
         #expect(files.map(\.name) == ["aaaaaaaaaaaaaaaa.md", "bbbbbbbbbbbbbbbb.md", "cccccccccccccccc.md"])
-        #expect(files.allSatisfy { $0.text == chunk.text + "\n" })
+        #expect(files.allSatisfy { $0.text == "agent\n" })
     }
 
     /// The real core, as the app runs it.
@@ -588,7 +583,7 @@ let CATEGORIZED = """
         #expect(files.map(\.name) == ids.map { "\($0).md" })
         for (file, id) in zip(files, ids) {
             let shown = try await app.cli.events("show", id).compactMap(\.chunk).map(\.text).joined(separator: "\n\n")
-            #expect(!shown.isEmpty && file.text == shown + "\n")
+            #expect(!shown.isEmpty && file.text.hasSuffix(shown + "\n"))  // after its pseudonymized name
         }
     }
 }

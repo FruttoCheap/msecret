@@ -11,6 +11,10 @@ copied into this repository or into the app bundle.
 | [Docling](https://github.com/docling-project/docling) | PDF, DOCX, XLSX, PPTX, HTML parsing | MIT |
 | [ocrmac](https://github.com/straussmaximilian/ocrmac) | OCR through macOS Vision | MIT |
 | [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) | the `serve` MCP server | MIT |
+| [PyMuPDF](https://github.com/pymupdf/PyMuPDF) | `export`: PDF redaction | AGPL-3.0 |
+| [sv-ttk](https://github.com/rdbende/Sun-Valley-ttk-theme) | theme of the Windows/Linux UI | MIT |
 | [uv](https://github.com/astral-sh/uv) | installs the core on first launch of the app | Apache-2.0 / MIT |
 
 Their transitive dependencies (see `uv.lock`) are MIT, BSD, Apache-2.0, ISC or PSF licensed.
+PyMuPDF is AGPL-3.0: a build that ships it inside a bundle is bound by the AGPL; the app bundle
+does not (it installs the core with uv on first launch).
