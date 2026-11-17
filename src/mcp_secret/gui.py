@@ -1,6 +1,7 @@
-"""Desktop UI where the Mac app (apps/macos) does not run: Windows, Linux. tkinter, stdlib only.
-Like the Mac app it only runs the CLI with --json (docs/cli-json.md): it never opens the
-databases, never starts serve, never loads a model. Paths, text and values stay in memory."""
+"""Desktop UI where the Mac app (apps/macos) does not run: Windows, Linux. tkinter, with sv-ttk
+for the Windows 11 look. Like the Mac app it only runs the CLI with --json (docs/cli-json.md): it
+never opens the databases, never starts serve, never loads a model. Paths, text and values stay
+in memory."""
 
 import json
 import os
@@ -15,6 +16,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
+import sv_ttk
+
 EXE = str(Path(sys.executable).parent / ("mcp-secret.exe" if os.name == "nt" else "mcp-secret"))
 TOKEN = re.compile(r"\[([A-Z]+(?:_[A-Z]+)*)_\d+\]")
 COLORS = {  # by type, as in the Mac app (DocumentView.swift)
@@ -22,7 +25,11 @@ COLORS = {  # by type, as in the Mac app (DocumentView.swift)
     "CF": "#ff9500", "PIVA": "#a2845e", "IBAN": "#ff3b30", "EMAIL": "#ff2d55",
     "TELEFONO": "#5856d6", "TARGA": "#ffcc00", "DOCUMENTO": "#00c7be", "DATA_NASCITA": "#32ade6",
 }
-INK, MUTED, LINE = "#1d1d1f", "#6e6e73", "#d2d2d7"
+# sv-ttk's light ink and accent; Windows 11's secondary text, card stroke, critical and caution
+INK, MUTED, LINE, PAPER, ACCENT = "#1c1c1c", "#5f5f5f", "#e5e5e5", "#ffffff", "#005fb8"
+RED, ORANGE = "#c42b1c", "#9d5d00"
+BODY, STRONG, CAPTION = "SunValleyBodyFont", "SunValleyBodyStrongFont", "SunValleyCaptionFont"
+FIND = "Click a highlighted value in the original to find its token here."
 
 
 def tint(color: str, a: float) -> str:
@@ -45,90 +52,155 @@ class App:
         # during an ingest waits for it; a second queue if reads should run alongside
         self.jobs, self.ui = queue.Queue(), queue.Queue()
         threading.Thread(target=self._run_jobs, daemon=True).start()
-        self.font, self.bold, self.small, self.big = (tkfont.nametofont("TkDefaultFont").copy()
-                                                      for _ in range(4))
-        self.font.configure(size=11)
-        self.bold.configure(size=10, weight="bold")
-        self.small.configure(size=8, weight="bold")
-        self.big.configure(size=14, weight="bold")
-        ttk.Style().configure("Treeview", rowheight=self.font.metrics("linespace") + 10)
+        sv_ttk.set_theme("light", root)
+        root.update_idletasks()  # sv-ttk recolors plain tk widgets once, now: before ours exist
+        # sv-ttk's fonts and our sizes are pixels at 100%; Windows at 150% has 144 dpi, so 1.5
+        scale = max(1.0, root.winfo_fpixels("1i") / 96)
+        self.px = px = lambda n: round(n * scale)
+        for name in (n for n in tkfont.names(root) if n.startswith("SunValley")):
+            f = tkfont.nametofont(name, root)
+            f["size"] = px(f["size"])  # negative: pixels
+        style = ttk.Style(root)
+        style.configure("Treeview", rowheight=tkfont.nametofont(BODY, root).metrics("linespace")
+                        + px(14))
+        for b in ("TButton", "Accent.TButton"):
+            style.configure(b, padding=(px(8), px(2), px(8), px(3)))
         root.title("mcp-secret")
-        root.geometry("1280x800")
+        root.geometry(f"{px(1280)}x{px(800)}")
+        root.minsize(px(800), px(500))
         if os.name == "nt":
             root.state("zoomed")
 
-        bar = ttk.Frame(root, padding=(10, 8))
+        bar = ttk.Frame(root, padding=(px(12), px(10)))
         bar.pack(fill="x")
-        for label, cmd in (("Add files…", self.add_files), ("Add folder…", self.add_folder),
-                           ("Re-index all", self.reindex), ("Connect Claude Desktop", self.desktop)):
-            ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=(0, 6))
-        self.status = tk.StringVar()
-        ttk.Label(bar, textvariable=self.status, foreground=MUTED).pack(side="right")
-        self.spin = ttk.Progressbar(bar, mode="indeterminate", length=100)
+        ttk.Button(bar, text="Add files…", style="Accent.TButton",
+                   command=self.add_files).pack(side="left")
+        ttk.Button(bar, text="Add folder…", command=self.add_folder).pack(side="left", padx=px(8))
+        ttk.Button(bar, text="Re-index all", command=self.reindex).pack(side="left")
+        ttk.Button(bar, text="Connect Claude Desktop", command=self.desktop).pack(side="right")
         ttk.Separator(root).pack(fill="x")
+        foot = ttk.Frame(root, padding=(px(12), px(5)))  # the status bar
+        foot.pack(side="bottom", fill="x")
+        ttk.Separator(root).pack(side="bottom", fill="x")
+        self.status = tk.StringVar()
+        ttk.Label(foot, textvariable=self.status, font=CAPTION, foreground=MUTED).pack(side="left")
+        self.spin = ttk.Progressbar(foot, mode="indeterminate", length=px(140))
 
         split = ttk.PanedWindow(root, orient="horizontal")
         split.pack(fill="both", expand=True)
-        self.tree = ttk.Treeview(split, columns=("state",), selectmode="browse")
-        self.tree.heading("#0", text="Document", anchor="w")
+        side = ttk.Frame(split, padding=(px(12), px(12), 0, px(12)))
+        split.add(side, weight=0)  # keeps its width: the document gets the rest
+        # a flat list: headings only, no tree column and its indent
+        self.tree = ttk.Treeview(side, columns=("name", "state"), show="headings",
+                                 selectmode="browse")
+        self.tree.heading("name", text="Document", anchor="w")
         self.tree.heading("state", text="State", anchor="w")
-        self.tree.column("state", width=110, stretch=False)
-        self.tree.tag_configure("missing", foreground="#c62828")
-        self.tree.tag_configure("changed", foreground="#e65100")
+        self.tree.column("name", width=px(210))
+        self.tree.column("state", width=px(90), stretch=False)
+        self.tree.tag_configure("missing", foreground=RED)
+        self.tree.tag_configure("changed", foreground=ORANGE)
         self.tree.bind("<<TreeviewSelect>>", lambda _: self.open())
-        split.add(self.tree, weight=1)
+        s = ttk.Scrollbar(side, command=self.tree.yview)
+        self.tree["yscrollcommand"] = s.set
+        s.pack(side="right", fill="y")
+        self.tree.pack(fill="both", expand=True)
 
-        right = ttk.Frame(split, padding=(14, 10))
-        split.add(right, weight=4)
-        head = ttk.Frame(right)
+        right = ttk.Frame(split, padding=(px(20), px(14), px(20), px(12)))
+        split.add(right, weight=1)
+        self.hello = ttk.Frame(right)  # until a document is open
+        self.hello.place(relx=.5, rely=.4, anchor="center")
+        ttk.Label(self.hello, text="No document open", font="SunValleySubtitleFont").pack()
+        self.tip = ttk.Label(self.hello, text="Add files or a folder to start.", foreground=MUTED)
+        self.tip.pack(pady=px(6))
+        self.view = ttk.Frame(right)  # the open document
+        head = ttk.Frame(self.view)
         head.pack(fill="x")
-        self.name = ttk.Label(head, text="No document open", font=self.big)
+        self.opener = ttk.Button(head, text="Open file", command=self.open_file)
+        self.opener.pack(side="right")
+        self.again = ttk.Button(head, text="Re-index", command=self.reindex_one)
+        self.again.pack(side="right", padx=px(8))
+        self.name = ttk.Label(head, font="SunValleySubtitleFont")
         self.name.pack(side="left")
-        ttk.Button(head, text="Open file", command=self.open_file).pack(side="right")
-        ttk.Button(head, text="Re-index", command=self.reindex_one).pack(side="right", padx=6)
-        self.note = ttk.Label(head, foreground=MUTED)  # the path, or what is wrong with it
-        self.note.pack(side="left", padx=10)
-        self.legend = ttk.Frame(right)
-        self.legend.pack(fill="x", pady=(8, 0))
-        panes = ttk.PanedWindow(right, orient="horizontal")
-        panes.pack(fill="both", expand=True, pady=8)
-        self.clear = self._pane(panes, "Original (click a value to find its token)")
-        self.agent = self._pane(panes, "What the agent sees")
-        acts = ttk.Frame(right)
+        self.note = ttk.Label(self.view, font=CAPTION)  # the path, or what is wrong with it
+        self.note.pack(fill="x", pady=(px(2), 0))
+        self.view.bind("<Configure>", lambda e: self.note.configure(wraplength=e.width))
+        self.legend = ttk.Frame(self.view)
+        self.legend.pack(fill="x", pady=(px(12), 0))
+        panes = ttk.PanedWindow(self.view, orient="horizontal")
+        panes.pack(fill="both", expand=True, pady=px(12))
+        self.clear = self._pane(panes, "Original",
+                                "Click a value to find its token. Select text to mask it.", (0, px(8)))
+        self.found = tk.StringVar(value=FIND)
+        self.agent = self._pane(panes, "What the agent sees", self.found, (px(8), 0))
+        acts = ttk.Frame(self.view)
         acts.pack(fill="x")
-        ttk.Label(acts, text="Select text in the original, then:", foreground=MUTED).pack(side="left")
-        ttk.Button(acts, text="Always mask", command=lambda: self.mask("deny")).pack(side="left", padx=6)
-        ttk.Button(acts, text="Never mask…", command=lambda: self.mask("allow")).pack(side="left")
+        self.deny = ttk.Button(acts, text="Always mask", command=lambda: self.mask("deny"))
+        self.deny.pack(side="left")
+        self.allow = ttk.Button(acts, text="Never mask…", command=lambda: self.mask("allow"))
+        self.allow.pack(side="left", padx=px(8))
+        ttk.Label(acts, text="the text selected in the original (or right-click it)",
+                  foreground=MUTED).pack(side="left")
+        self.clear.bind("<<Selection>>", self._selection)
+        self._selection()
+        menu = tk.Menu(root, tearoff=False)
+        menu.add_command(label="Always mask", command=lambda: self.mask("deny"))
+        menu.add_command(label="Never mask…", command=lambda: self.mask("allow"))
+        self.clear.bind("<Button-2>" if sys.platform == "darwin" else "<Button-3>",
+                        lambda e: self.clear.tag_ranges("sel") and menu.tk_popup(e.x_root, e.y_root))
 
-        self._fill(self.clear, "Add files or a folder, then pick a document on the left.")
         self._poll()
         self.job(lambda: self.cli("status"), self._started)
 
-    def _pane(self, panes, title: str) -> tk.Text:
-        f = ttk.Frame(panes)
-        ttk.Label(f, text=title, font=self.bold).pack(anchor="w", pady=(0, 4))
-        t = tk.Text(f, wrap="word", width=40, state="disabled", font=self.font, padx=14, pady=12,
-                    spacing1=2, spacing3=6, relief="flat", background="white", foreground=INK,
-                    highlightthickness=1, highlightbackground=LINE, highlightcolor=LINE,
-                    selectbackground="#b3d4fc", selectforeground=INK,
-                    inactiveselectbackground="#b3d4fc", cursor="arrow")
+    def _pane(self, panes, title: str, hint: str | tk.StringVar, padx: tuple) -> tk.Text:
+        px, f = self.px, ttk.Frame(panes, padding=(padx[0], 0, padx[1], 0))
+        ttk.Label(f, text=title, font=STRONG).pack(anchor="w")
+        ttk.Label(f, font=CAPTION, foreground=MUTED, **{
+            "textvariable" if isinstance(hint, tk.StringVar) else "text": hint}).pack(
+            anchor="w", pady=(0, px(6)))
+        t = tk.Text(f, wrap="word", width=40, height=1, state="disabled", font=BODY,
+                    padx=px(16), pady=px(12), spacing2=px(3), spacing3=px(3), relief="flat",
+                    borderwidth=0, background=PAPER, foreground=INK, highlightthickness=1,
+                    highlightbackground=LINE, highlightcolor=ACCENT, selectbackground=ACCENT,
+                    selectforeground=PAPER, inactiveselectbackground=ACCENT)
         s = ttk.Scrollbar(f, command=t.yview)
         t["yscrollcommand"] = s.set
-        s.pack(side="right", fill="y")
+        s.pack(side="right", fill="y", padx=(px(2), 0))
         t.pack(fill="both", expand=True)
         for ty, c in COLORS.items():
-            t.tag_configure(ty, background=tint(c, .25))
+            for tag in (ty, ty + "-chip"):  # a value, its token tag: the same tint, one pill
+                t.tag_configure(tag, background=tint(c, .25))
+                t.tag_bind(tag, "<Enter>", lambda _: t.configure(cursor="hand2"))
+                t.tag_bind(tag, "<Leave>", lambda _: t.configure(cursor="xterm"))
+        t.tag_configure("chip", font=CAPTION, foreground=MUTED)
         t.tag_configure("hint", foreground=MUTED)
-        t.tag_configure("head", foreground=MUTED, font=self.small, spacing1=8)
-        t.tag_configure("hit", font=self.bold, underline=True, relief="solid", borderwidth=1)
+        t.tag_configure("head", foreground=MUTED, font=CAPTION, spacing1=px(10), spacing3=px(4))
+        t.tag_configure("hit", font=STRONG, underline=True, background="#ffd54f")  # find
+        t.tag_raise("sel")  # a selection shows over the tints
         panes.add(f, weight=1)
         return t
+
+    def _selection(self, _=None) -> None:
+        """The mask buttons work while text is selected in the original."""
+        on = "!disabled" if self.clear.tag_ranges("sel") else "disabled"
+        self.deny.state([on])
+        self.allow.state([on])
+
+    def selected(self) -> str:
+        """The text selected in the original, its token tags left out: they are not in the file."""
+        t = self.clear
+        t.tag_configure("chip", elide=True)  # get -displaychars skips elided text
+        try:
+            return t.tk.call(t, "get", "-displaychars", "sel.first", "sel.last").strip()
+        except tk.TclError:  # nothing selected
+            return ""
+        finally:
+            t.tag_configure("chip", elide=False)
 
     # CLI calls run on one thread; what they hand back runs on the UI thread (tkinter's own)
 
     def job(self, work, then) -> None:
         if not self.busy:
-            self.spin.pack(side="right", padx=10)
+            self.spin.pack(side="right")
             self.spin.start(12)
         self.busy += 1
         self.jobs.put((work, then))
@@ -202,9 +274,11 @@ class App:
         self.tree.delete(*self.tree.get_children())
         for d in self.docs.values():
             state = "missing" if not d["exists"] else "changed" if d["stale"] else ""
-            self.tree.insert("", "end", iid=d["doc_id"], text=Path(d["path"]).name, tags=(state,),
-                             values=(state or f"{d['chunks']} chunk{'s' * (d['chunks'] != 1)}",))
-        self.status.set(f"{len(self.docs)} documents")
+            self.tree.insert("", "end", iid=d["doc_id"], tags=(state,), values=(
+                Path(d["path"]).name, state or f"{d['chunks']} chunk{'s' * (d['chunks'] != 1)}"))
+        self.status.set(f"{len(self.docs)} document{'s' * (len(self.docs) != 1)}")
+        if self.docs:
+            self.tip["text"] = "Pick a document on the left."
         if self.cur in self.docs:
             self.tree.selection_set(self.cur)  # opens it again
 
@@ -213,23 +287,28 @@ class App:
             return
         self.cur = doc_id = sel[0]
         d = self.docs[doc_id]
+        self.hello.place_forget()
+        self.view.pack(fill="both", expand=True)
         self.name["text"] = Path(d["path"]).name
         self.note.configure(**(
-            {"text": "File missing: only what the agent sees is left.", "foreground": "#c62828"}
+            {"text": "File missing: only what the agent sees is left.", "foreground": RED}
             if not d["exists"] else
             {"text": "Changed since indexed: the agent still sees the old text. Re-index it.",
-             "foreground": "#e65100"} if d["stale"] else {"text": d["path"], "foreground": MUTED}))
+             "foreground": ORANGE} if d["stale"] else {"text": d["path"], "foreground": MUTED}))
+        self.again["style"] = "Accent.TButton" if d["stale"] else "TButton"
+        self.opener.state(["!disabled" if d["exists"] else "disabled"])
+        self.found.set(FIND)
         self._fill(self.clear, "Reading the original… the first one also loads the models, "
                                "up to a minute.")
+        self._fill(self.agent, "Loading…" if d["chunks"] else
+                   "Nothing published: the file has no text.")
         if d["chunks"]:
             self.job(lambda: self.cli("show", doc_id), lambda evs: self._agent(doc_id, evs))
-        else:
-            self._fill(self.agent, "Nothing published: the file has no text.")
         self.job(lambda: self.review(doc_id), lambda rev: self._original(doc_id, rev))
 
     def _fill(self, t: tk.Text, hint: str = "") -> None:
-        """Empty a pane (and its token labels), with a gray `hint` in it."""
-        for w in t.winfo_children():
+        """Empty a pane, with a gray `hint` in it; the original takes its legend along."""
+        for w in self.legend.winfo_children() if t is self.clear else ():
             w.destroy()
         t["state"] = "normal"
         t.delete("1.0", "end")
@@ -240,8 +319,6 @@ class App:
         if doc_id != self.cur:
             return
         t = self.clear
-        for w in self.legend.winfo_children():  # a document opened again: it comes back here
-            w.destroy()
         if rev["event"] == "error":  # stderr is only shown here, never written anywhere
             return self._fill(t, f"Can't read the original: {rev['error']}, {rev['message']}.\n\n"
                                  + "".join(self.log))
@@ -252,20 +329,18 @@ class App:
         text, at = rev["text"], 0
         for s in rev["spans"]:  # inserted piecewise: no offset arithmetic
             t.insert("end", text[at:s["start"]])
-            t.insert("end", text[s["start"]:s["end"]], (s["type"], s["token"]))
+            # the value tinted by type, then its token in small type ("chip": never selected)
+            t.insert("end", text[s["start"]:s["end"]], (s["type"], s["token"]),
+                     " " + s["token"], ("chip", s["type"] + "-chip", s["token"]))
             t.tag_bind(s["token"], "<Button-1>", lambda _, k=s["token"]: self._find(k))
-            # ponytail: a label per span; a document with thousands of them opens slowly
-            chip = tk.Label(t, text=s["token"], font=self.small, foreground=INK, padx=3, pady=0,
-                            background=tint(COLORS.get(s["type"], "#8e8e93"), .5), cursor="hand2")
-            chip.bind("<Button-1>", lambda _, k=s["token"]: self._find(k))
-            t.window_create("end", window=chip, padx=2)
             at = s["end"]
         t.insert("end", text[at:])
         t["state"] = "disabled"
         types = {s["type"] for s in rev["spans"]}
-        for ty in (ty for ty in COLORS if ty in types):
-            tk.Label(self.legend, text=ty, font=self.small, foreground=INK, padx=6, pady=1,
-                     background=tint(COLORS[ty], .5)).pack(side="left", padx=(0, 6))
+        for ty in (ty for ty in COLORS if ty in types):  # tinted as in the text
+            tk.Label(self.legend, text=ty, font=CAPTION, foreground=INK, padx=self.px(8),
+                     pady=self.px(2), background=tint(COLORS[ty], .25)).pack(
+                side="left", padx=(0, self.px(6)))
 
     def _agent(self, doc_id: str, evs: list[dict]) -> None:
         if doc_id != self.cur:
@@ -274,7 +349,7 @@ class App:
         self._fill(t)
         t["state"] = "normal"
         for c in (ev for ev in evs if ev["event"] == "chunk"):
-            t.insert("end", f"CHUNK {c['chunk_id']}\n", "head")
+            t.insert("end", f"Chunk {c['chunk_id']}\n", "head")
             text, at = c["text"].strip("\n"), 0
             for m in TOKEN.finditer(text):
                 t.insert("end", text[at:m.start()])
@@ -293,7 +368,8 @@ class App:
             a.tag_add("hit", r[i], r[i + 1])
         if r:
             a.see(r[0])
-        self.status.set(f"{token}: {len(r) // 2} in what the agent sees")
+        n = len(r) // 2
+        self.found.set(f"{token}: {n} occurrence{'s' * (n != 1)}")
 
     # actions
 
@@ -343,10 +419,7 @@ class App:
     def mask(self, cmd: str) -> None:
         """deny (always mask) or allow (never mask) the selected text, then index this document
         again; other documents keep an allowed value masked until Re-index all."""
-        try:
-            value = self.clear.get("sel.first", "sel.last").strip()  # token labels left out
-        except tk.TclError:
-            value = ""
+        value = self.selected()
         if not value or self.cur not in self.docs:
             return self.status.set("Select text in the original first")
         if cmd == "allow" and not messagebox.askyesno(
@@ -363,7 +436,7 @@ class App:
 
 
 def main() -> None:
-    if os.name == "nt":  # sharp text on scaled displays instead of a blurry bitmap
+    if os.name == "nt":  # sharp text on scaled displays instead of a blurry bitmap: App scales
         import ctypes
 
         ctypes.windll.shcore.SetProcessDpiAwareness(1)

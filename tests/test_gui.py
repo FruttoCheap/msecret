@@ -40,11 +40,15 @@ def test_open_then_always_mask(tmp_path, monkeypatch):
     app.tree.selection_set(next(iter(app.docs)))
     until(lambda: "[PERSONA_" in agent() and masked())
     assert {"Mario Rossi", "RSSMRA80A01H501U"} <= set(masked()) and "Mario" not in agent()
-    assert len(app.clear.window_names()) == len(masked())  # a token label after each value
+    assert len(app.clear.tag_ranges("chip")) == 2 * len(masked())  # a token tag after each value
     assert app.agent.tag_ranges("PERSONA") and app.agent.tag_ranges("IBAN")  # tokens colored
     app._find("[CF_1]")
     assert app.agent.get(*app.agent.tag_ranges("hit")[:2]) == "[CF_1]"
 
+    at = app.clear.search("Mario Rossi", "1.0")  # a value and its token tag: the value alone
+    app.clear.tag_add("sel", at, app.clear.tag_nextrange("chip", at)[1])
+    assert app.selected() == "Mario Rossi"
+    app.clear.tag_remove("sel", "1.0", "end")
     at = app.clear.search("marzo", "1.0")
     app.clear.tag_add("sel", at, f"{at}+5c")
     app.mask("deny")
