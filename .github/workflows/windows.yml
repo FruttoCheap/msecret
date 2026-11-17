@@ -1,0 +1,21 @@
+# The suite on Windows: every ingest, export and serve there runs in winbox's AppContainer,
+# and test_winbox/test_gui only run here.
+name: windows
+on: [push, workflow_dispatch]
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - uses: actions/cache@v4
+        with:  # GLiNER (Hugging Face) and Docling's layout and RapidOCR models
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/docling
+          key: models-${{ hashFiles('src/mcp_secret/pii.py', 'uv.lock') }}
+      - run: uv run mcp-secret models
+      - run: uv run ruff check
+      - run: uv run pytest -rs
