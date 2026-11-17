@@ -21,7 +21,7 @@ def published(tmp_path: Path, docs: dict | None = None, deny: str = "") -> str:
     root, d = tmp_path / "data", tmp_path / "docs"
     (root / "private").mkdir(parents=True, exist_ok=True)
     d.mkdir(exist_ok=True)
-    (root / "private" / "deny.txt").write_text(deny)
+    (root / "private" / "deny.txt").write_text(deny, encoding="utf-8")
     for name, content in (docs or {}).items():
         content(d / name) if callable(content) else (d / name).write_text(content, encoding="utf-8")
     assert ingest.run(root, [d]) == 0

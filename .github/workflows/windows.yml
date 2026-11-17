@@ -29,3 +29,4 @@ jobs:
       - run: uv run pytest -rs --tb=short
         env:
           MCP_SECRET_DEBUG: 1  # a failed file prints its frames and the path an OSError names
+          PYTHONUTF8: 1  # the tests' own files, as on macOS; the box runs -I, so the core reads as shipped

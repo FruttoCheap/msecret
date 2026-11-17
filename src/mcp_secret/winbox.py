@@ -175,7 +175,10 @@ def run(argv: list[str], name: str, state: Path, read=(), write=()) -> int:
     si.StartupInfo.hStdInput, si.StartupInfo.hStdOutput, si.StartupInfo.hStdError = std
     si.lpAttributeList = ctypes.addressof(attrs)
 
-    env = {**os.environ, "TEMP": str(tmp), "TMP": str(tmp)}  # the box cannot write the user's
+    # the box cannot write the user's temp folder: every temp and cache path goes to its own.
+    # torch sets TORCHINDUCTOR_CACHE_DIR in a process that imported it, and its children inherit it
+    env = {**os.environ, "TEMP": str(tmp), "TMP": str(tmp), "TMPDIR": str(tmp),
+           "TORCHINDUCTOR_CACHE_DIR": str(tmp / "torchinductor")}
     block = "".join(f"{k}={v}\0" for k, v in sorted(env.items(), key=lambda kv: kv[0].upper()))
     raw = (block + "\0").encode("utf-16-le")
     env_buf = (ctypes.c_char * len(raw)).from_buffer_copy(raw)

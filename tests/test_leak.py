@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw, ImageFont
 from mcp_secret.cli import sandbox_cmd
 from mcp_secret.ingest import _apply
 
-CLI = str(Path(sys.executable).parent / "mcp-secret")
+CLI = str(Path(sys.executable).parent / ("mcp-secret.exe" if os.name == "nt" else "mcp-secret"))
 CF, IBAN, EMAIL = "RSSMRA80A01H501U", "IT60X0542811101000000123456", "zq.canary@example.org"
 NAME = "Zebulón Quackenbüsh"  # only deny.txt knows it is a name
 LATE = "frittata tiepida"  # plain words GLiNER ignores (a nonsense name scored 0.76 as person)
