@@ -26,4 +26,4 @@ jobs:
             ~/.cache/docling
           key: ${{ steps.models.outputs.cache-primary-key }}
       - run: uv run ruff check
-      - run: uv run pytest -rs
+      - run: uv run pytest -rs --tb=short

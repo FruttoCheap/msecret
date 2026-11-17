@@ -16,7 +16,8 @@ def test_open_then_always_mask(tmp_path, monkeypatch):
         pytest.skip(f"no Tk: {e}")
     monkeypatch.setenv("MCP_SECRET_HOME", str(tmp_path / "data"))
     errors = []  # a modal dialog would block the loop below
-    monkeypatch.setattr(gui.messagebox, "showerror", lambda *a: errors.append(a))
+    for dialog in ("showerror", "showwarning"):
+        monkeypatch.setattr(gui.messagebox, dialog, lambda *a: errors.append(a))
     (doc := tmp_path / "a.txt").write_text(CONTRACT)
     app = gui.App(root)
 
