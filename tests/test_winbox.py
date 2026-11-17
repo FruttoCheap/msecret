@@ -38,8 +38,10 @@ def imports():  # the stack ingest loads: the first operation the box refuses sh
     os.devnull = winbox.devnull()  # as cli._sandboxed does
     try:
         import docling.document_converter, gliner  # noqa
-    except Exception as e:
-        return repr(e)
+    except Exception as e:  # where: the frames and the file, never a message with text
+        import traceback
+        frames = [f"{f.filename}:{f.lineno}" for f in traceback.extract_tb(e.__traceback__)[-4:]]
+        return [repr(e), getattr(e, "filename", None), *frames]
     return True
 
 def connect(host, port):

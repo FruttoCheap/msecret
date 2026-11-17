@@ -23,7 +23,7 @@ def published(tmp_path: Path, docs: dict | None = None, deny: str = "") -> str:
     d.mkdir(exist_ok=True)
     (root / "private" / "deny.txt").write_text(deny)
     for name, content in (docs or {}).items():
-        content(d / name) if callable(content) else (d / name).write_text(content)
+        content(d / name) if callable(content) else (d / name).write_text(content, encoding="utf-8")
     assert ingest.run(root, [d]) == 0
     con = sqlite3.connect(root / "public" / "public.db")
     return "\n".join(t for (t,) in con.execute("SELECT text FROM chunks ORDER BY doc_id, seq"))

@@ -93,5 +93,5 @@ def test_drive_offline(tmp_path):
     p.write_text(json.dumps({"folders": [{"id": ID, "name": "Clienti", "dir": "Clienti"}]}))
     assert run(env, "drive", "remove", "1Zzzzzzzzzzzz", code=1)[0]["error"] == "no_folder"
     assert run(env, "drive", "remove", f"https://drive.google.com/drive/folders/{ID}") == [none]
-    assert run(env, "drive", "logout") == [none] and oct(p.stat().st_mode & 0o777) == "0o600"
+    assert run(env, "drive", "logout") == [none] and (os.name == "nt" or oct(p.stat().st_mode & 0o777) == "0o600")
     assert not Path(tmp_path / "private" / "drive").exists()  # nothing synced, nothing written

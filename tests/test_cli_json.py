@@ -23,7 +23,7 @@ MINUTES = "Verbale: presente Giulia Bianchi, telefono 3331234567, dopo la fritta
 def run(env: dict, *args: str, code: int = 0) -> list[dict]:
     """The CLI's stdout as JSON objects: a line that is anything else fails json.loads."""
     r = subprocess.run([CLI, "--json", *args], env=env, capture_output=True, text=True, check=False)
-    assert r.returncode == code, r.stderr
+    assert r.returncode == code, r.stderr + r.stdout
     return [json.loads(line) for line in r.stdout.splitlines()]
 
 
@@ -44,7 +44,10 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
     (docs / "a.txt").write_text(CONTRACT)
     (docs / "b.txt").write_text(MINUTES)
     (docs / "c.txt").write_text("x")
-    (docs / "c.txt").chmod(0)  # unreadable: an error event, the other files go on
+    if sys.platform == "win32":  # unreadable: an error event, the other files go on
+        subprocess.run(["icacls", docs / "c.txt", "/deny", "*S-1-1-0:(R)"], check=True, capture_output=True)
+    else:
+        (docs / "c.txt").chmod(0)
     ev = run(env, "ingest", str(docs), code=1)
     assert ev[0] == {"event": "start", "files": 3} and ev[-1] == {"event": "done"}
     a, b, c = ev[1:-1]
@@ -116,7 +119,8 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
 
 
 def test_desktop_config(tmp_path):
-    env = {**os.environ, "MCP_SECRET_HOME": str(tmp_path / "data"), "HOME": str(tmp_path)}
+    env = {**os.environ, "MCP_SECRET_HOME": str(tmp_path / "data"), "HOME": str(tmp_path),
+           "APPDATA": str(tmp_path / "Library/Application Support")}  # Windows: Claude's folder there
     cfg = tmp_path / "Library/Application Support/Claude/claude_desktop_config.json"
     assert run(env, "desktop-config") == [{"event": "desktop", "config": str(cfg), "configured": False,
                                            "command": None, "command_ok": False, "last_log": None}]

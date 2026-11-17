@@ -450,7 +450,7 @@ def edit(priv: Path, name: str, value: str, add: bool) -> bool:
     from mcp_secret.ingest import clean, norm
 
     p = priv / f"{name}.txt"
-    lines = p.read_text().splitlines() if p.exists() else []
+    lines = p.read_text(encoding="utf-8-sig").splitlines() if p.exists() else []
     keep = [s for s in lines if norm(clean(s)) != value]
     if (len(keep) < len(lines)) == add:  # already there, or nothing to remove
         return False
@@ -533,7 +533,7 @@ def drive_cmd(priv: Path, action: str, arg: str | None) -> None:
 
     _private(priv)
     p = priv / "drive.json"
-    conf = json.loads(p.read_text()) if p.exists() else {}
+    conf = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     folders = conf.setdefault("folders", [])
 
     def save() -> None:

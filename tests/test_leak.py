@@ -68,7 +68,7 @@ def corpus(d: Path) -> None:
     _pdf(d / "fattura.pdf", f"Fattura CF {CF} IBAN {IBAN} email {EMAIL}", CF, NAME)
 
     img = Image.new("RGB", (1400, 260), "white")
-    font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 48)
+    font = ImageFont.load_default(48)  # Pillow's own: on every system
     ImageDraw.Draw(img).multiline_text((40, 40), f"CF {CF}\nMail {EMAIL}", fill="black",
                                        font=font, spacing=40)
     img.save(d / "scansione.png")

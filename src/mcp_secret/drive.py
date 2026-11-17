@@ -57,7 +57,7 @@ def _json(url: str, token: str) -> dict:
 def client(path: Path) -> dict:
     """client_id and client_secret of a Google Cloud OAuth client of type "Desktop app"."""
     try:
-        c = json.loads(path.read_text())["installed"]
+        c = json.loads(path.read_text(encoding="utf-8-sig"))["installed"]
         return {"client_id": c["client_id"], "client_secret": c["client_secret"]}
     except (OSError, ValueError, KeyError, TypeError):
         raise Error("no_client", "not the JSON file of a Desktop app OAuth client") from None

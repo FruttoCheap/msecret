@@ -6,6 +6,7 @@ import io
 import re
 import sqlite3
 import zipfile
+from pathlib import Path
 
 import docx
 import openpyxl
@@ -121,7 +122,7 @@ def test_export_originals(tmp_path, monkeypatch):
     _scan(d / "scansione.pdf")
     assert ingest.run(root, [d]) == 0
     con = sqlite3.connect(root / "private" / "private.db")
-    ids = {p.split("/")[-1]: i for i, p in con.execute("SELECT id, path FROM docs")}
+    ids = {Path(p).name: i for i, p in con.execute("SELECT id, path FROM docs")}
 
     cli.export(root, work, [])
     out = {p.suffix: p for p in (work / "pseudonymized").iterdir()}

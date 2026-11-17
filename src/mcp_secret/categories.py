@@ -23,7 +23,7 @@ def rules(priv: Path) -> dict[str, list[str]]:
     """private/categories.txt, one `Name: term, term*, two words` per line, # comments. A
     document whose published text holds any term gets the category."""
     p, out = priv / "categories.txt", {}
-    for r in filter(None, map(_rule, p.read_text().splitlines() if p.exists() else [])):
+    for r in filter(None, map(_rule, p.read_text(encoding="utf-8-sig").splitlines() if p.exists() else [])):
         terms = out.setdefault(r[0], [])
         terms += [t for t in r[1] if t not in terms]
     return out
@@ -33,7 +33,7 @@ def set_rule(priv: Path, n: str, terms: list[str]) -> str:
     """categories.txt with rule `n` replaced by `terms` (removed if none); other lines and
     comments stay as they are."""
     p = priv / "categories.txt"
-    keep = [s for s in (p.read_text().splitlines() if p.exists() else [])
+    keep = [s for s in (p.read_text(encoding="utf-8-sig").splitlines() if p.exists() else [])
             if (r := _rule(s)) is None or r[0] != n]
     return "".join(f"{s}\n" for s in keep + ([f"{n}: {', '.join(terms)}"] if terms else []))
 

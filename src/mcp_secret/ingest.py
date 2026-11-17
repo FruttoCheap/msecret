@@ -123,7 +123,7 @@ def parse(path: Path) -> str:
     """Document text. Only the content: no file name, no metadata (title, author, dates)."""
     kind = path.suffix.lower()
     if kind == ".txt":
-        return path.read_text(errors="replace")
+        return path.read_text(encoding="utf-8-sig", errors="replace")
     if kind in (".html", ".htm"):
         return _markdown(_html(path.read_bytes()))
     if kind != ".eml":
@@ -314,7 +314,7 @@ def chunk(text: str, size: int = 1500) -> list[str]:
 def _lines(path: Path) -> list[str]:
     if not path.exists():
         return []
-    lines = (clean(s).strip() for s in path.read_text().splitlines())
+    lines = (clean(s).strip() for s in path.read_text(encoding="utf-8-sig").splitlines())
     return [s for s in lines if s]
 
 

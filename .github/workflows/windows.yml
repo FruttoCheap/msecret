@@ -27,3 +27,5 @@ jobs:
           key: ${{ steps.models.outputs.cache-primary-key }}
       - run: uv run ruff check
       - run: uv run pytest -rs --tb=short
+        env:
+          MCP_SECRET_DEBUG: 1  # a failed file prints its frames and the path an OSError names

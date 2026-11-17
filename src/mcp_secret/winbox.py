@@ -124,7 +124,7 @@ def _grant(sid: str, paths, rights: str, state: Path) -> int:
     it could not open: the box then fails on them, closed. ponytail: an ACE stays after the
     run; the folder's mtime is part of the key, so an install walks again, but a file moved into
     a subfolder keeps its own ACL: delete `state` after a manual ACL reset or such a move."""
-    done = set(json.loads(state.read_text())) if state.exists() else set()
+    done = set(json.loads(state.read_text(encoding="utf-8"))) if state.exists() else set()
     failed = 0
     for p in map(Path, paths):
         if not p.exists():
@@ -139,7 +139,7 @@ def _grant(sid: str, paths, rights: str, state: Path) -> int:
             failed += 1
         else:
             done.add(key)
-    state.write_text(json.dumps(sorted(done)))
+    state.write_text(json.dumps(sorted(done)), encoding="utf-8")
     return failed
 
 
