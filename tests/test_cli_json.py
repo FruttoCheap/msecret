@@ -88,7 +88,7 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
     assert run(env, "deny", "add", "--", "  Frittata ") == [
         {"event": "deny", "action": "add", "changed": True}]
     deny, allow = root / "private" / "deny.txt", root / "private" / "allow.txt"
-    assert deny.read_text() == "frittata\n" and deny.stat().st_mode & 0o777 == 0o600
+    assert deny.read_text() == "frittata\n" and (os.name == "nt" or deny.stat().st_mode & 0o777 == 0o600)
     assert run(env, "deny", "add", "FRITTATA") == [
         {"event": "deny", "action": "add", "changed": False}]
     run(env, "ingest", str(docs / "b.txt"))

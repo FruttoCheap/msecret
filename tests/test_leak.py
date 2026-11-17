@@ -174,8 +174,9 @@ def test_leak(tmp_path: Path) -> None:
     r = cli(env, "ingest", str(tmp_path / "docs"), str(tmp_path / "late"))
     assert r.returncode == 0 and r.stdout.count("unchanged") == 8, r.stdout + r.stderr
 
-    assert (root / "private").stat().st_mode & 0o777 == 0o700
-    assert (root / "private" / "private.db").stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":  # Windows: %LOCALAPPDATA%'s ACL keeps the data root to its user
+        assert (root / "private").stat().st_mode & 0o777 == 0o700
+        assert (root / "private" / "private.db").stat().st_mode & 0o777 == 0o600
     db = root / "public" / "public.db"
     assert not leaked(db.read_bytes().decode("utf-8", "ignore"))
     con = sqlite3.connect(db)
