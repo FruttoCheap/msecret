@@ -70,8 +70,9 @@ begin
   WizardForm.StatusLabel.Caption := CustomMessage('Core');
   WizardForm.ProgressGauge.Style := npbstMarquee;
   Log := ExpandConstant('{app}\install.log');
-  // relative paths from {app}: a user name with a space stays one argument
-  if not Exec(ExpandConstant('{cmd}'), '/c uv.exe tool install --force --reinstall --python 3.12 '
+  // relative paths from {app}: a user name with a space stays one argument. The UI goes where
+  // the shortcuts point, whatever UV_TOOL_BIN_DIR says
+  if not Exec(ExpandConstant('{cmd}'), '/c set "UV_TOOL_BIN_DIR=%USERPROFILE%\.local\bin" && uv.exe tool install --force --reinstall --python 3.12 '
               + '-c constraints.txt mcp_secret-{#Version}-py3-none-any.whl > install.log 2>&1',
               ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
     MsgBox(FmtMessage(CustomMessage('CoreFailed'), [Log]), mbError, MB_OK);
