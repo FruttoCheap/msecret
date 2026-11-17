@@ -1071,6 +1071,16 @@
         }
       }
     },
+    "Installing… a few minutes": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installazione in corso… qualche minuto"
+          }
+        }
+      }
+    },
     "Last used by Claude": {
       "localizations": {
         "it": {
@@ -1347,6 +1357,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Apri Terminale"
+          }
+        }
+      }
+    },
+    "Or in Terminal": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppure dal Terminale"
           }
         }
       }
@@ -1811,6 +1831,16 @@
         }
       }
     },
+    "The installation failed. Its last lines:": {
+      "localizations": {
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'installazione non è riuscita. Le sue ultime righe:"
+          }
+        }
+      }
+    },
     "The original is gone: only what the agent sees is left.": {
       "localizations": {
         "it": {
@@ -1991,12 +2021,12 @@
         }
       }
     },
-    "mcp-secret needs its core, a command-line program that is missing or is not the version of this app. Paste this in Terminal: it takes a few minutes and uses the network. Then come back here.": {
+    "mcp-secret needs its core, a command-line program that is missing or is not the version of this app. Installing it takes a few minutes and uses the network.": {
       "localizations": {
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "mcp-secret ha bisogno del suo core, un programma da riga di comando che manca o non è la versione di questa app. Incolla questo comando nel Terminale: richiede qualche minuto e usa la rete. Poi torna qui."
+            "value": "mcp-secret ha bisogno del suo core, un programma a riga di comando che manca o non è della versione di questa app. L'installazione richiede qualche minuto e usa la rete."
           }
         }
       }

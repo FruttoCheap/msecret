@@ -37,6 +37,14 @@ def tint(color: str, a: float) -> str:
     return "#" + "".join(f"{round(255 - (255 - int(color[i:i + 2], 16)) * a):02x}" for i in (1, 3, 5))
 
 
+def launch(path: str) -> None:
+    """A file in its own app, a folder in the file manager."""
+    if os.name == "nt":
+        os.startfile(path)
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+
+
 def spawn(*args: str, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL) -> subprocess.Popen:
     # stderr may quote documents: dropped, or kept in memory. No console window on Windows.
     return subprocess.Popen([EXE, "--json", *args], stdin=stdin, stdout=subprocess.PIPE,
@@ -77,6 +85,8 @@ class App:
                    command=self.add_files).pack(side="left")
         ttk.Button(bar, text="Add folder…", command=self.add_folder).pack(side="left", padx=px(8))
         ttk.Button(bar, text="Re-index all", command=self.reindex).pack(side="left")
+        ttk.Button(bar, text="Export all for Cowork…", command=self.export).pack(side="left",
+                                                                                 padx=px(8))
         ttk.Button(bar, text="Connect Claude Desktop", command=self.desktop).pack(side="right")
         ttk.Separator(root).pack(fill="x")
         foot = ttk.Frame(root, padding=(px(12), px(5)))  # the status bar
@@ -119,6 +129,7 @@ class App:
         self.opener.pack(side="right")
         self.again = ttk.Button(head, text="Re-index", command=self.reindex_one)
         self.again.pack(side="right", padx=px(8))
+        ttk.Button(head, text="Export…", command=lambda: self.export(self.cur)).pack(side="right")
         self.name = ttk.Label(head, font="SunValleySubtitleFont")
         self.name.pack(side="left")
         self.note = ttk.Label(self.view, font=CAPTION)  # the path, or what is wrong with it
@@ -389,13 +400,23 @@ class App:
 
     def open_file(self) -> None:
         """The original in its own app: the PDF as a PDF, not as parsed text."""
-        if self.cur not in self.docs or not self.docs[self.cur]["exists"]:
+        if self.cur in self.docs and self.docs[self.cur]["exists"]:
+            launch(self.docs[self.cur]["path"])
+
+    def export(self, *doc_ids: str) -> None:
+        """One document straight in a folder, as its original format with tokens for values
+        (`export --doc`); none: every document and the guide, for Claude Cowork."""
+        if not (folder := filedialog.askdirectory(title="Export to")):
             return
-        path = self.docs[self.cur]["path"]
-        if os.name == "nt":
-            os.startfile(path)
-        else:
-            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+        docs = [a for d in doc_ids for a in ("--doc", d)]
+
+        def done(evs: list[dict]) -> None:
+            if ev := next((e for e in evs if e["event"] == "export"), None):
+                self.status.set(f"Exported {ev['docs']} document{'s' * (ev['docs'] != 1)}")
+                launch(folder)
+
+        self.status.set("Exporting…")
+        self.job(lambda: self.cli("export", *docs, "--", folder), done)
 
     def ingest(self, *paths: str, force: bool = False) -> None:
         if not paths:

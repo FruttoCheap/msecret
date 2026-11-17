@@ -4,7 +4,6 @@ output of the MCP tools, and the serve process must be boxed in."""
 import asyncio
 import json
 import os
-import pwd
 import re
 import sqlite3
 import subprocess
@@ -202,6 +201,13 @@ def test_leak(tmp_path: Path) -> None:
     assert len(late) == 3 and all(c["text"].startswith("# Verbale") for c in late)
     assert [c["chunk_id"] for c in late] == chunk_ids[-3:] and "[PERSONA_" in late[0]["text"]
 
+    # fail closed: a forged "already sandboxed" flag without the sandbox refuses to serve
+    r = cli(boxed, "--sandboxed", "serve")
+    assert r.returncode != 0 and not r.stdout
+    if sys.platform != "darwin":  # the box is test_winbox's there
+        return
+    import pwd
+
     # serve's sandbox, probed with the exact profile serve computes for itself
     code = "from mcp_secret.cli import home, profile; print(profile(home()), end='')"
     prof = subprocess.run([sys.executable, "-I", "-c", code], env=boxed, capture_output=True,
@@ -214,9 +220,6 @@ def test_leak(tmp_path: Path) -> None:
         probe = subprocess.run(sandbox_cmd(prof, "-c", PROBE, str(root), *docs), env=boxed,
                                capture_output=True, text=True, check=False)
     assert probe.returncode == 0, probe.stdout + probe.stderr
-    # fail closed: a forged "already sandboxed" flag without the sandbox refuses to serve
-    r = cli(boxed, "--sandboxed", "serve")
-    assert r.returncode != 0 and not r.stdout
 
 
 PROBE = """

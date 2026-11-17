@@ -53,6 +53,13 @@ def test_open_then_always_mask(tmp_path, monkeypatch):
     app.clear.tag_add("sel", at, f"{at}+5c")
     app.mask("deny")
     until(lambda: "marzo" not in agent() and "marzo" in masked())
+
+    out = tmp_path / "out"  # Export…: what the agent sees, straight in the folder
+    monkeypatch.setattr(gui.filedialog, "askdirectory", lambda **_: str(out))
+    monkeypatch.setattr(gui, "launch", lambda p: None)
+    app.export(app.cur)
+    until(lambda: list(out.glob("*.md")))
+    assert "[PERSONA_" in next(out.glob("*.md")).read_text(encoding="utf-8")
     app.worker.stdin.close()
     app.worker.wait()
     root.destroy()

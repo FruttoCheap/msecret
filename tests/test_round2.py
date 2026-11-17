@@ -10,6 +10,7 @@ import sys
 import threading
 
 import docx
+import pytest
 from mcp.types import LATEST_PROTOCOL_VERSION
 from test_attacks import CF, IBAN, leaks, published
 from test_leak import CLI
@@ -244,6 +245,7 @@ def sandbox_denies(pid: int, op: str, path: str) -> bool:
     return check(pid, op.encode(), 0x40000001, path.encode()) == 1  # FILTER_PATH | NO_REPORT
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="sandbox-exec is macOS; Windows: test_winbox")
 def test_serve_writes_no_file(tmp_path):
     published(tmp_path, {"a.txt": "Nota di prova per la sessione.\n"})
     env = {**os.environ, "MCP_SECRET_HOME": str(tmp_path / "data")}
@@ -283,6 +285,7 @@ print(ctypes.CDLL(None).proc_pidpath(ppid, buf, len(buf)) > 0, signal)
 """
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="sandbox-exec is macOS; Windows: test_winbox")
 def test_serve_cannot_inspect_or_signal_its_parent(tmp_path):
     (tmp_path / "public").mkdir()
     r = subprocess.run(sandbox_cmd(profile(tmp_path), "-c", PROC_PROBE), capture_output=True,

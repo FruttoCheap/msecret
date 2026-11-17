@@ -159,26 +159,56 @@ struct CoreMissing: View {
     @Environment(AppModel.self) private var app
     // outside a release app (`swift run`): the repo's own setup
     private let command = CLI.installCommand() ?? "uv sync"
+    @State private var installing = false
+    @State private var failed: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("Install the core")).font(.title).bold()
-            Text(L("mcp-secret needs its core, a command-line program that is missing or is not the version of this app. Paste this in Terminal: it takes a few minutes and uses the network. Then come back here."))
+            Text(L("mcp-secret needs its core, a command-line program that is missing or is not the version of this app. Installing it takes a few minutes and uses the network."))
                 .fixedSize(horizontal: false, vertical: true)
-            Text(verbatim: command)
-                .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary, in: .rect(cornerRadius: 6))
+            if let failed {
+                Text(L("The installation failed. Its last lines:")).foregroundStyle(.red)
+                Text(verbatim: failed)
+                    .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack {
-                Button(L("Copy Command")) {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(command, forType: .string)
-                }
-                Button(L("Open Terminal")) {
-                    NSWorkspace.shared.open(URL(filePath: "/System/Applications/Utilities/Terminal.app"))
+                if installing {
+                    ProgressView().controlSize(.small)
+                    Text(L("Installing… a few minutes"))
                 }
                 Spacer()
-                Button(L("Check Again")) { Task { await app.refresh() } }.keyboardShortcut(.defaultAction)
+                Button(L("Install")) {
+                    Task {
+                        installing = true
+                        failed = nil
+                        let (ok, tail) = await CLI.install(command)
+                        if ok { await app.refresh() } else { failed = tail }
+                        installing = false
+                    }
+                }
+                .keyboardShortcut(.defaultAction).disabled(installing)
+            }
+            DisclosureGroup(L("Or in Terminal")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(verbatim: command)
+                        .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quaternary, in: .rect(cornerRadius: 6))
+                    HStack {
+                        Button(L("Copy Command")) {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(command, forType: .string)
+                        }
+                        Button(L("Open Terminal")) {
+                            NSWorkspace.shared.open(URL(filePath: "/System/Applications/Utilities/Terminal.app"))
+                        }
+                        Spacer()
+                        Button(L("Check Again")) { Task { await app.refresh() } }
+                    }
+                }
+                .padding(.top, 6)
             }
         }
         .padding(30)

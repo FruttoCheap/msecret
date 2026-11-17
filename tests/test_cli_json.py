@@ -5,6 +5,7 @@ import os
 import signal
 import sqlite3
 import subprocess
+import sys
 from importlib.metadata import version
 from pathlib import Path
 
@@ -154,6 +155,7 @@ def test_unexpected_failure_is_an_error_line(tmp_path):
     assert run(env, "status", code=1) == [{"event": "error", "error": "failed", "message": "DatabaseError"}]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="only the Mac app cancels an ingest")
 def test_cancel_rolls_back(tmp_path):
     """The UI cancels an ingest with SIGTERM: the open transaction rolls back, so no hot journal
     blocks the read-only commands, and what was reported indexed is exactly what is there."""

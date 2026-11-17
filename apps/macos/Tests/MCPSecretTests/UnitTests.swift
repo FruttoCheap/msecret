@@ -601,6 +601,12 @@ let CATEGORIZED = """
         #expect(CLI.shippedWheel(resources: dir)?.version == "0.1.0")
     }
 
+    @Test func installRunsTheCommandAndKeepsItsLastLines() async {
+        #expect(await CLI.install("true") == (true, ""))
+        let (ok, tail) = await CLI.install("for i in $(seq 1 20); do echo $i; done; echo oops >&2; exit 3")
+        #expect(!ok && tail == "14\n15\n16\n17\n18\n19\n20\noops")
+    }
+
     @MainActor @Test func aCoreOfAnotherVersionShowsTheInstallSheetAgain() async throws {
         let core = try Recorded(["status": (STATUS, 0), "list": (LIST, 0)])  // STATUS: version 0.1.0
         let app = AppModel(cliPath: core.path, dataRoot: "/tmp/data")

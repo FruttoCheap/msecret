@@ -42,6 +42,25 @@ struct CLI: Sendable, Equatable {
             + "uv tool install --force --reinstall --python 3.12 -c constraints.txt ./\(wheel.url.lastPathComponent)"
     }
 
+    /// Runs `installCommand` itself, so a first run needs no Terminal: its exit status and the
+    /// last lines it printed (uv's, package names: no document data), for a failure to show.
+    static func install(_ command: String) async -> (ok: Bool, tail: String) {
+        await Task.detached {
+            let process = Process()
+            process.executableURL = URL(filePath: "/bin/zsh")
+            process.arguments = ["-c", command]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            process.standardInput = FileHandle.nullDevice
+            do { try process.run() } catch { return (false, error.localizedDescription) }
+            let out = pipe.fileHandleForReading.readDataToEndOfFile()  // drains it: uv never blocks
+            process.waitUntilExit()
+            let lines = String(decoding: out, as: UTF8.self).split(separator: "\n").suffix(8)
+            return (process.terminationStatus == 0, lines.joined(separator: "\n"))
+        }.value
+    }
+
     func process(_ args: [String], stdout: Pipe) -> Process {
         let process = Process()
         process.executableURL = executable
