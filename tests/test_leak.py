@@ -17,6 +17,7 @@ from pathlib import Path
 import docx
 import openpyxl
 import pymupdf
+import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from PIL import Image, ImageDraw, ImageFont
@@ -256,6 +257,7 @@ sys.exit(0 if all(checks.values()) else str(checks))
 """
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="only the Mac app cancels; winbox has no job object")
 def test_kill_mid_ingest(tmp_path: Path) -> None:
     root, docs = tmp_path / "data", tmp_path / "docs"
     docs.mkdir()

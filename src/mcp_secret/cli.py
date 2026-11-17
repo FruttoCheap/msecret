@@ -577,6 +577,8 @@ def drive_cmd(priv: Path, action: str, arg: str | None) -> None:
 
 def main() -> None:
     global _json
+    for s in (sys.stdout, sys.stderr):  # paths and text in UTF-8, as --json: a pipe on Windows is cp1252
+        s.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(prog="mcp-secret", description=__doc__)
     ap.add_argument("--sandboxed", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--json", action="store_true",

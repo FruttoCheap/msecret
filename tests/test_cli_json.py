@@ -63,9 +63,10 @@ def test_ingest_list_show_review_deny_allow(tmp_path):
 
     # review: the text in clear and its spans; masked and chunked, exactly what was published
     shown = run(env, "show", a["doc_id"])
-    files = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    files = {p: p.read_bytes() for p in root.rglob("*") if p.is_file() and not p.name.startswith(".winbox-")}
     [r] = run(env, "review", a["doc_id"])
-    assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == files  # wrote nothing
+    assert {p: p.read_bytes() for p in root.rglob("*")  # wrote nothing but the box's ACL cache
+            if p.is_file() and not p.name.startswith(".winbox-")} == files
     assert (r["event"], r["doc_id"], r["path"], r["exists"], r["stale"], r["text"]) == (
         "review", a["doc_id"], a["path"], True, False, "a.txt\n\n" + CONTRACT)
     assert {"PERSONA", "CF", "IBAN"} <= {s["type"] for s in r["spans"]}
@@ -134,7 +135,8 @@ def test_desktop_config(tmp_path):
     assert conf["mcpServers"].pop("mcp-secret") == {
         "command": CLI, "args": ["serve"], "env": {"MCP_SECRET_HOME": str((tmp_path / "data").resolve())}}
     assert conf == other  # everything else intact
-    log = tmp_path / "Library/Logs/Claude/mcp-server-mcp-secret.log"
+    log = (tmp_path / "Library/Application Support/Claude/logs" if os.name == "nt"
+           else tmp_path / "Library/Logs/Claude") / "mcp-server-mcp-secret.log"
     log.parent.mkdir(parents=True)
     log.touch()
     [st] = run(env, "desktop-config", "--uninstall")
@@ -228,7 +230,7 @@ def test_categories_and_tokens(tmp_path):
         {"event": "rule", "name": "Altro", "terms": ["x"]},
         {"event": "rule", "name": "Pagamenti", "terms": ["pagament*", "iban"]}]
     assert rules.read_text() == "# mine\nAltro: x\nPagamenti: pagament*, iban\n"
-    assert rules.stat().st_mode & 0o777 == 0o600
+    assert os.name == "nt" or rules.stat().st_mode & 0o777 == 0o600
     assert run(env, "rules", "--set", "a:b", code=1)[0]["error"] == "bad_value"
     assert [d["categories"] for d in run(env, "list")] == [["Clienti", "Pagamenti"], ["Verbali"]]
 
@@ -323,7 +325,7 @@ def test_export(tmp_path):
     assert not [v for v in clear if v in blob] and "[PERSONA_" in blob
     assert "[PERSONA_3]" in (work / "PSEUDONYMIZED.md").read_text()
     assert (work / "pseudonymized").stat().st_mode & 0o755 == 0o755  # readable through another uid
-    assert all(p.stat().st_mode & 0o777 == 0o644 for p in files.values())
+    assert os.name == "nt" or all(p.stat().st_mode & 0o777 == 0o644 for p in files.values())
 
     # the folder follows the index: a gone document and a killed export's leftover go; any other
     # file stays
