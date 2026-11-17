@@ -30,3 +30,54 @@ jobs:
         env:
           MCP_SECRET_DEBUG: 1  # a failed file prints its frames and the path an OSError names
           PYTHONUTF8: 1  # the tests' own files, as on macOS; the box runs -I, so the core reads as shipped
+
+  # The installer (scripts/installer.iss), then installed and used as a user would: the core
+  # from PyPI through uv tool install, a document indexed in the box, then uninstalled.
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.3"  # the uv the installer ships
+      - name: Build
+        run: |
+          $v = (Select-String -Path pyproject.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
+          uv build --wheel --out-dir build
+          Remove-Item build\.gitignore -ErrorAction Ignore
+          uv export --frozen --no-dev --no-hashes --no-emit-project -o build\constraints.txt
+          Copy-Item (Get-Command uv).Source build\uv.exe
+          uv run --no-project --with pillow python -c "from PIL import Image; Image.open('apps/macos/Sources/MCPSecret/Resources/AppIcon.png').save('build/mcp-secret.ico', sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DVersion=$v" scripts\installer.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          "VERSION=$v" >> $env:GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-secret-setup-${{ env.VERSION }}
+          path: dist/mcp-secret-setup-*.exe
+      - uses: actions/cache/restore@v4
+        with:  # the test job's models: `mcp-secret models` is the UI's first-launch step
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/docling
+          key: models-${{ hashFiles('src/mcp_secret/pii.py', 'uv.lock') }}
+          fail-on-cache-miss: true
+      - name: Install, index a document, uninstall
+        run: |
+          Start-Process "dist\mcp-secret-setup-$env:VERSION.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          $app = "$env:LOCALAPPDATA\Programs\mcp-secret"
+          Get-Content "$app\install.log" -Tail 3
+          $cli, $gui = "$env:USERPROFILE\.local\bin\mcp-secret.exe", "$env:USERPROFILE\.local\bin\mcp-secret-gui.exe"
+          if (-not (Test-Path $gui)) { throw "no $gui" }
+          & $cli --json status
+          $doc = "$env:RUNNER_TEMP\contratto.txt"
+          Set-Content $doc "Contratto tra Mario Rossi, codice fiscale RSSMRA80A01H501U." -Encoding utf8
+          $d = & $cli --json ingest $doc | ConvertFrom-Json | Where-Object event -eq doc
+          if ($d.status -ne 'indexed') { throw "ingest: $($d | ConvertTo-Json -Compress)" }
+          $shown = (& $cli --json show $d.doc_id | ConvertFrom-Json | Where-Object event -eq chunk).text -join ''
+          if ($shown -notmatch '\[CF_\d+\]' -or $shown -match 'RSSMRA') { throw "show: $shown" }
+          & $cli --json export --doc $d.doc_id -- "$env:RUNNER_TEMP\out"
+          if (-not (Test-Path "$env:RUNNER_TEMP\out\$($d.doc_id).md")) { throw "export wrote nothing" }
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES' -Wait
+          if ((Test-Path $gui) -or (Test-Path "$app\uv.exe")) { throw "uninstall left the core" }

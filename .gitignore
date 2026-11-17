@@ -8,4 +8,5 @@ fixtures/out/
 .DS_Store
 .claude/
 dist/
+build/
 docs/PLAN.md
