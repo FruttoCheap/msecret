@@ -4,6 +4,7 @@ never opens the databases, never starts serve, never loads a model. Paths, text 
 in memory."""
 
 import json
+import locale
 import os
 import queue
 import re
@@ -30,6 +31,86 @@ INK, MUTED, LINE, PAPER, ACCENT = "#1c1c1c", "#5f5f5f", "#e5e5e5", "#ffffff", "#
 RED, ORANGE = "#c42b1c", "#9d5d00"
 BODY, STRONG, CAPTION = "SunValleyBodyFont", "SunValleyBodyStrongFont", "SunValleyCaptionFont"
 FIND = "Click a highlighted value in the original to find its token here."
+
+
+def italian() -> bool:
+    """The system speaks Italian: Windows by its display language, elsewhere by the locale."""
+    if os.name == "nt":
+        import ctypes
+
+        return ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x10  # LANG_ITALIAN
+    return (locale.getlocale()[0] or "").startswith("it")
+
+
+IT = {  # the Mac app's terms (apps/macos/Sources/MCPSecret/Localizable.xcstrings)
+    "Add files…": "Aggiungi file…",
+    "Add folder…": "Aggiungi cartella…",
+    "Re-index all": "Re-indicizza tutto",
+    "Export all for Cowork…": "Esporta tutto per Cowork…",
+    "Connect Claude Desktop": "Collega Claude Desktop",
+    "Document": "Documento",
+    "State": "Stato",
+    "No document open": "Nessun documento aperto",
+    "Add files or a folder to start.": "Aggiungi file o una cartella per iniziare.",
+    "Pick a document on the left.": "Scegli un documento a sinistra.",
+    "Open file": "Apri file",
+    "Re-index": "Re-indicizza",
+    "Export…": "Esporta…",
+    "Original": "Originale",
+    "Click a value to find its token. Select text to mask it.":
+        "Fai clic su un valore per trovarne il token. Seleziona del testo per mascherarlo.",
+    FIND: "Fai clic su un valore evidenziato nell'originale per trovare qui il suo token.",
+    "What the agent sees": "Cosa vede l'agente",
+    "Always mask": "Maschera sempre",
+    "Never mask…": "Non mascherare mai…",
+    "the text selected in the original (or right-click it)":
+        "il testo selezionato nell'originale (o con il clic destro)",
+    "Download the models now? About 2 GB, once: the only network use.":
+        "Scaricare ora i modelli? Circa 2 GB, una volta sola: l'unico uso della rete.",
+    "Downloading models…": "Download dei modelli…",
+    "Downloading models {step}/2…": "Download dei modelli {step}/2…",
+    "Models ready": "Modelli pronti",
+    "missing": "mancante",
+    "changed": "cambiato",
+    "{n} chunk": "{n} frammento",
+    "{n} chunks": "{n} frammenti",
+    "{n} document": "{n} documento",
+    "{n} documents": "{n} documenti",
+    "File missing: only what the agent sees is left.":
+        "File mancante: resta solo ciò che vede l'agente.",
+    "Changed since indexed: the agent still sees the old text. Re-index it.":
+        "Cambiato dopo l'indicizzazione: l'agente vede ancora il testo vecchio. Re-indicizzalo.",
+    "Reading the original… the first one also loads the models, up to a minute.":
+        "Lettura dell'originale… il primo carica anche i modelli, fino a un minuto.",
+    "Loading…": "Caricamento…",
+    "Nothing published: the file has no text.": "Niente di pubblicato: il file non ha testo.",
+    "Can't read the original: {error}, {message}.":
+        "Impossibile leggere l'originale: {error}, {message}.",
+    "Chunk {n}": "Frammento {n}",
+    "{token}: {n} occurrence": "{token}: {n} occorrenza",
+    "{token}: {n} occurrences": "{token}: {n} occorrenze",
+    "Add files": "Aggiungi file",
+    "Add a folder": "Aggiungi una cartella",
+    "Export to": "Esporta in",
+    "Exported {n} document": "{n} documento esportato",
+    "Exported {n} documents": "{n} documenti esportati",
+    "Exporting…": "Esportazione…",
+    "Indexing…": "Indicizzazione…",
+    "Indexing {n}…": "Indicizzazione {n}…",
+    "Not indexed": "Indicizzazione non riuscita",
+    "Select text in the original first": "Prima seleziona del testo nell'originale",
+    "Publish this value in clear?": "Pubblicare questo valore in chiaro?",
+    "“{value}” becomes visible to the agent in this document. Other documents keep it masked "
+    "until Re-index all.": "“{value}” diventa visibile all'agente in questo documento. Negli "
+    "altri documenti resta mascherato fino a Re-indicizza tutto.",
+    "Added to Claude Desktop: restart Claude.": "Aggiunto a Claude Desktop: riavvia Claude.",
+}
+LANG = IT if italian() else {}  # ponytail: Italian or English, like the Mac app; no gettext
+
+
+def tr(en: str, **kw) -> str:
+    """`en` in the system's language; `kw` fills its {fields}. CLI codes and messages stay as is."""
+    return LANG.get(en, en).format(**kw)
 
 
 def tint(color: str, a: float) -> str:
@@ -81,13 +162,13 @@ class App:
 
         bar = ttk.Frame(root, padding=(px(12), px(10)))
         bar.pack(fill="x")
-        ttk.Button(bar, text="Add files…", style="Accent.TButton",
+        ttk.Button(bar, text=tr("Add files…"), style="Accent.TButton",
                    command=self.add_files).pack(side="left")
-        ttk.Button(bar, text="Add folder…", command=self.add_folder).pack(side="left", padx=px(8))
-        ttk.Button(bar, text="Re-index all", command=self.reindex).pack(side="left")
-        ttk.Button(bar, text="Export all for Cowork…", command=self.export).pack(side="left",
+        ttk.Button(bar, text=tr("Add folder…"), command=self.add_folder).pack(side="left", padx=px(8))
+        ttk.Button(bar, text=tr("Re-index all"), command=self.reindex).pack(side="left")
+        ttk.Button(bar, text=tr("Export all for Cowork…"), command=self.export).pack(side="left",
                                                                                  padx=px(8))
-        ttk.Button(bar, text="Connect Claude Desktop", command=self.desktop).pack(side="right")
+        ttk.Button(bar, text=tr("Connect Claude Desktop"), command=self.desktop).pack(side="right")
         ttk.Separator(root).pack(fill="x")
         foot = ttk.Frame(root, padding=(px(12), px(5)))  # the status bar
         foot.pack(side="bottom", fill="x")
@@ -103,8 +184,8 @@ class App:
         # a flat list: headings only, no tree column and its indent
         self.tree = ttk.Treeview(side, columns=("name", "state"), show="headings",
                                  selectmode="browse")
-        self.tree.heading("name", text="Document", anchor="w")
-        self.tree.heading("state", text="State", anchor="w")
+        self.tree.heading("name", text=tr("Document"), anchor="w")
+        self.tree.heading("state", text=tr("State"), anchor="w")
         self.tree.column("name", width=px(210))
         self.tree.column("state", width=px(90), stretch=False)
         self.tree.tag_configure("missing", foreground=RED)
@@ -119,17 +200,17 @@ class App:
         split.add(right, weight=1)
         self.hello = ttk.Frame(right)  # until a document is open
         self.hello.place(relx=.5, rely=.4, anchor="center")
-        ttk.Label(self.hello, text="No document open", font="SunValleySubtitleFont").pack()
-        self.tip = ttk.Label(self.hello, text="Add files or a folder to start.", foreground=MUTED)
+        ttk.Label(self.hello, text=tr("No document open"), font="SunValleySubtitleFont").pack()
+        self.tip = ttk.Label(self.hello, text=tr("Add files or a folder to start."), foreground=MUTED)
         self.tip.pack(pady=px(6))
         self.view = ttk.Frame(right)  # the open document
         head = ttk.Frame(self.view)
         head.pack(fill="x")
-        self.opener = ttk.Button(head, text="Open file", command=self.open_file)
+        self.opener = ttk.Button(head, text=tr("Open file"), command=self.open_file)
         self.opener.pack(side="right")
-        self.again = ttk.Button(head, text="Re-index", command=self.reindex_one)
+        self.again = ttk.Button(head, text=tr("Re-index"), command=self.reindex_one)
         self.again.pack(side="right", padx=px(8))
-        ttk.Button(head, text="Export…", command=lambda: self.export(self.cur)).pack(side="right")
+        ttk.Button(head, text=tr("Export…"), command=lambda: self.export(self.cur)).pack(side="right")
         self.name = ttk.Label(head, font="SunValleySubtitleFont")
         self.name.pack(side="left")
         self.note = ttk.Label(self.view, font=CAPTION)  # the path, or what is wrong with it
@@ -139,23 +220,23 @@ class App:
         self.legend.pack(fill="x", pady=(px(12), 0))
         panes = ttk.PanedWindow(self.view, orient="horizontal")
         panes.pack(fill="both", expand=True, pady=px(12))
-        self.clear = self._pane(panes, "Original",
-                                "Click a value to find its token. Select text to mask it.", (0, px(8)))
-        self.found = tk.StringVar(value=FIND)
-        self.agent = self._pane(panes, "What the agent sees", self.found, (px(8), 0))
+        self.clear = self._pane(panes, tr("Original"), tr(
+            "Click a value to find its token. Select text to mask it."), (0, px(8)))
+        self.found = tk.StringVar(value=tr(FIND))
+        self.agent = self._pane(panes, tr("What the agent sees"), self.found, (px(8), 0))
         acts = ttk.Frame(self.view)
         acts.pack(fill="x")
-        self.deny = ttk.Button(acts, text="Always mask", command=lambda: self.mask("deny"))
+        self.deny = ttk.Button(acts, text=tr("Always mask"), command=lambda: self.mask("deny"))
         self.deny.pack(side="left")
-        self.allow = ttk.Button(acts, text="Never mask…", command=lambda: self.mask("allow"))
+        self.allow = ttk.Button(acts, text=tr("Never mask…"), command=lambda: self.mask("allow"))
         self.allow.pack(side="left", padx=px(8))
-        ttk.Label(acts, text="the text selected in the original (or right-click it)",
+        ttk.Label(acts, text=tr("the text selected in the original (or right-click it)"),
                   foreground=MUTED).pack(side="left")
         self.clear.bind("<<Selection>>", self._selection)
         self._selection()
         menu = tk.Menu(root, tearoff=False)
-        menu.add_command(label="Always mask", command=lambda: self.mask("deny"))
-        menu.add_command(label="Never mask…", command=lambda: self.mask("allow"))
+        menu.add_command(label=tr("Always mask"), command=lambda: self.mask("deny"))
+        menu.add_command(label=tr("Never mask…"), command=lambda: self.mask("allow"))
         self.clear.bind("<Button-2>" if sys.platform == "darwin" else "<Button-3>",
                         lambda e: self.clear.tag_ranges("sel") and menu.tk_popup(e.x_root, e.y_root))
 
@@ -268,14 +349,15 @@ class App:
 
     def _started(self, evs: list[dict]) -> None:
         if evs and not evs[0]["models"] and messagebox.askyesno(
-                "mcp-secret", "Download the models now? About 2 GB, once: the only network use."):
-            self.status.set("Downloading models…")
-            self.job(lambda: self.cli("models", each=self._step), lambda _: self.status.set("Models ready"))
+                "mcp-secret", tr("Download the models now? About 2 GB, once: the only network use.")):
+            self.status.set(tr("Downloading models…"))
+            self.job(lambda: self.cli("models", each=self._step),
+                     lambda _: self.status.set(tr("Models ready")))
         self.refresh()
 
     def _step(self, ev: dict) -> None:
         if ev["event"] == "step":
-            self.status.set(f"Downloading models {ev['step']}/2…")
+            self.status.set(tr("Downloading models {step}/2…", step=ev["step"]))
 
     def refresh(self) -> None:
         self.job(lambda: self.cli("list"), self._listed)
@@ -286,10 +368,12 @@ class App:
         for d in self.docs.values():
             state = "missing" if not d["exists"] else "changed" if d["stale"] else ""
             self.tree.insert("", "end", iid=d["doc_id"], tags=(state,), values=(
-                Path(d["path"]).name, state or f"{d['chunks']} chunk{'s' * (d['chunks'] != 1)}"))
-        self.status.set(f"{len(self.docs)} document{'s' * (len(self.docs) != 1)}")
+                Path(d["path"]).name, tr(state) if state else
+                tr("{n} chunk" if d["chunks"] == 1 else "{n} chunks", n=d["chunks"])))
+        n = len(self.docs)
+        self.status.set(tr("{n} document" if n == 1 else "{n} documents", n=n))
         if self.docs:
-            self.tip["text"] = "Pick a document on the left."
+            self.tip["text"] = tr("Pick a document on the left.")
         if self.cur in self.docs:
             self.tree.selection_set(self.cur)  # opens it again
 
@@ -302,17 +386,17 @@ class App:
         self.view.pack(fill="both", expand=True)
         self.name["text"] = Path(d["path"]).name
         self.note.configure(**(
-            {"text": "File missing: only what the agent sees is left.", "foreground": RED}
+            {"text": tr("File missing: only what the agent sees is left."), "foreground": RED}
             if not d["exists"] else
-            {"text": "Changed since indexed: the agent still sees the old text. Re-index it.",
+            {"text": tr("Changed since indexed: the agent still sees the old text. Re-index it."),
              "foreground": ORANGE} if d["stale"] else {"text": d["path"], "foreground": MUTED}))
         self.again["style"] = "Accent.TButton" if d["stale"] else "TButton"
         self.opener.state(["!disabled" if d["exists"] else "disabled"])
-        self.found.set(FIND)
-        self._fill(self.clear, "Reading the original… the first one also loads the models, "
-                               "up to a minute.")
-        self._fill(self.agent, "Loading…" if d["chunks"] else
-                   "Nothing published: the file has no text.")
+        self.found.set(tr(FIND))
+        self._fill(self.clear, tr(
+            "Reading the original… the first one also loads the models, up to a minute."))
+        self._fill(self.agent, tr("Loading…") if d["chunks"] else
+                   tr("Nothing published: the file has no text."))
         if d["chunks"]:
             self.job(lambda: self.cli("show", doc_id), lambda evs: self._agent(doc_id, evs))
         self.job(lambda: self.review(doc_id), lambda rev: self._original(doc_id, rev))
@@ -331,10 +415,11 @@ class App:
             return
         t = self.clear
         if rev["event"] == "error":  # stderr is only shown here, never written anywhere
-            return self._fill(t, f"Can't read the original: {rev['error']}, {rev['message']}.\n\n"
-                                 + "".join(self.log))
+            return self._fill(t, tr("Can't read the original: {error}, {message}.",
+                                    error=rev["error"], message=rev["message"])
+                              + "\n\n" + "".join(self.log))
         if not rev["exists"]:
-            return self._fill(t, "File missing: only what the agent sees is left.")
+            return self._fill(t, tr("File missing: only what the agent sees is left."))
         self._fill(t)
         t["state"] = "normal"
         text, at = rev["text"], 0
@@ -360,7 +445,7 @@ class App:
         self._fill(t)
         t["state"] = "normal"
         for c in (ev for ev in evs if ev["event"] == "chunk"):
-            t.insert("end", f"Chunk {c['chunk_id']}\n", "head")
+            t.insert("end", tr("Chunk {n}", n=c["chunk_id"]) + "\n", "head")
             text, at = c["text"].strip("\n"), 0
             for m in TOKEN.finditer(text):
                 t.insert("end", text[at:m.start()])
@@ -380,15 +465,16 @@ class App:
         if r:
             a.see(r[0])
         n = len(r) // 2
-        self.found.set(f"{token}: {n} occurrence{'s' * (n != 1)}")
+        self.found.set(tr("{token}: {n} occurrence" if n == 1 else "{token}: {n} occurrences",
+                           token=token, n=n))
 
     # actions
 
     def add_files(self) -> None:
-        self.ingest(*filedialog.askopenfilenames(title="Add files"))
+        self.ingest(*filedialog.askopenfilenames(title=tr("Add files")))
 
     def add_folder(self) -> None:
-        if folder := filedialog.askdirectory(title="Add a folder"):
+        if folder := filedialog.askdirectory(title=tr("Add a folder")):
             self.ingest(folder)
 
     def reindex(self) -> None:
@@ -406,16 +492,17 @@ class App:
     def export(self, *doc_ids: str) -> None:
         """One document straight in a folder, as its original format with tokens for values
         (`export --doc`); none: every document and the guide, for Claude Cowork."""
-        if not (folder := filedialog.askdirectory(title="Export to")):
+        if not (folder := filedialog.askdirectory(title=tr("Export to"))):
             return
         docs = [a for d in doc_ids for a in ("--doc", d)]
 
         def done(evs: list[dict]) -> None:
             if ev := next((e for e in evs if e["event"] == "export"), None):
-                self.status.set(f"Exported {ev['docs']} document{'s' * (ev['docs'] != 1)}")
+                self.status.set(tr("Exported {n} document" if ev["docs"] == 1 else
+                                   "Exported {n} documents", n=ev["docs"]))
                 launch(folder)
 
-        self.status.set("Exporting…")
+        self.status.set(tr("Exporting…"))
         self.job(lambda: self.cli("export", *docs, "--", folder), done)
 
     def ingest(self, *paths: str, force: bool = False) -> None:
@@ -426,15 +513,15 @@ class App:
         def each(ev: dict) -> None:
             if ev["event"] == "doc" and ev["status"] != "removed":
                 n[0] += 1
-                self.status.set(f"Indexing {n[0]}…")
+                self.status.set(tr("Indexing {n}…", n=n[0]))
 
         def done(evs: list[dict]) -> None:
             bad = [f"{Path(e['path']).name}: {e['error']}" for e in evs if e.get("status") == "error"]
             if bad:
-                messagebox.showwarning("Not indexed", "\n".join(bad))
+                messagebox.showwarning(tr("Not indexed"), "\n".join(bad))
             self.refresh()
 
-        self.status.set("Indexing…")
+        self.status.set(tr("Indexing…"))
         self.job(lambda: self.cli("ingest", *paths, *(["--force"] if force else []), each=each), done)
 
     def mask(self, cmd: str) -> None:
@@ -442,10 +529,11 @@ class App:
         again; other documents keep an allowed value masked until Re-index all."""
         value = self.selected()
         if not value or self.cur not in self.docs:
-            return self.status.set("Select text in the original first")
+            return self.status.set(tr("Select text in the original first"))
         if cmd == "allow" and not messagebox.askyesno(
-                "Publish this value in clear?", f"“{value}” becomes visible to the agent in this "
-                "document. Other documents keep it masked until Re-index all."):
+                tr("Publish this value in clear?"), tr(
+                    "“{value}” becomes visible to the agent in this document. Other documents "
+                    "keep it masked until Re-index all.", value=value)):
             return
         self.job(lambda: self.cli(cmd, "add", "--", value), lambda _: None)
         self.ingest(self.docs[self.cur]["path"], force=cmd == "allow")
@@ -453,7 +541,7 @@ class App:
     def desktop(self) -> None:
         self.job(lambda: self.cli("desktop-config", "--install"),
                  lambda evs: evs[-1:] and evs[-1]["event"] == "desktop" and messagebox.showinfo(
-                     "mcp-secret", "Added to Claude Desktop: restart Claude."))
+                     "mcp-secret", tr("Added to Claude Desktop: restart Claude.")))
 
 
 def main() -> None:
