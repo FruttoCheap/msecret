@@ -20,10 +20,10 @@ with the body, so whatever detection misses there is published like a miss in th
 
 ## Install
 
-macOS, [uv](https://docs.astral.sh/uv/). Prefer an app? See [Try the app](#try-the-app).
+macOS or Windows, [uv](https://docs.astral.sh/uv/). Prefer an app? See [Try the app](#try-the-app).
 
 ```sh
-git clone https://github.com/FruttoCheap/Anonim.git && cd Anonim
+git clone https://github.com/FruttoCheap/msecret.git && cd msecret
 uv sync
 uv run mcp-secret models     # one-time model download; with `drive`, the only network use
 ```
@@ -185,10 +185,12 @@ swift run --package-path apps/macos MCPSecret
 ```
 
 Windows and Linux: `uv run mcp-secret-gui` (on Windows also `.venv\Scripts\mcp-secret-gui.exe`,
-no console). A smaller tkinter UI, Windows 11 style (sv-ttk), on the same contract: add files or folders, the original with
+no console; the installer in [Try the app](#try-the-app) adds it to the Start menu). A smaller
+tkinter UI, Windows 11 style (sv-ttk), in English, on the same contract: add files or folders, the original with
 its masked values tinted by type and tagged with their token next to what the agent sees (click
 a value to find its token there), Open File for the original in its own app, Always/Never Mask a
-selection, Re-index, Claude Desktop install, the model download on first launch. When the
+selection, Re-index, Export… (the open document, `export --doc`) and Export All for Cowork,
+Claude Desktop install, the model download on first launch. When the
 original cannot be read, its pane says why, with the last lines the review process wrote.
 
 - The window opens on the simple view: drop one file (or ⌘O) and it is indexed like any other,
@@ -229,24 +231,35 @@ and dark.
 
 ## Try the app
 
-A Mac (Apple Silicon or Intel), macOS 15+, about 4 GB of disk. No repo, no Xcode. On Intel the
-core installs older pinned versions (torch 2.2.2, docling 2.73, gliner 0.2.22: nothing newer
-publishes an Intel wheel), see `[tool.uv]` in `pyproject.toml`.
+Both from the [latest release](https://github.com/FruttoCheap/msecret/releases/latest); about
+4 GB of disk, network for the install and the models, no repo or developer tools.
 
-1. Download `mcp-secret-<version>.zip` from the
-   [latest release](https://github.com/FruttoCheap/Anonim/releases/latest), unzip it, drag
-   `mcp-secret.app` to Applications and open it.
-2. The first launch says "Install the core". Click Copy Command, Open Terminal, paste, press
-   Return. It installs [uv](https://docs.astral.sh/uv/) from astral.sh if you have none, then the
-   core (and its Python dependencies, from PyPI) into `~/.local/share/uv/tools/mcp-secret`: a few
-   minutes, network needed. Back in the app, Check Again.
+**Mac** (Apple Silicon or Intel, macOS 15+). On Intel the core installs older pinned versions
+(torch 2.2.2, docling 2.73, gliner 0.2.22: nothing newer publishes an Intel wheel), see
+`[tool.uv]` in `pyproject.toml`.
+
+1. Download `mcp-secret-<version>.zip`, unzip it, drag `mcp-secret.app` to Applications and
+   open it.
+2. The first launch says "Install the core": click Install. It installs
+   [uv](https://docs.astral.sh/uv/) from astral.sh if you have none, then the core (and its
+   Python dependencies, from PyPI) into `~/.local/share/uv/tools/mcp-secret`: a few minutes.
+   "Or in Terminal" shows the same command, to paste yourself.
 3. The Setup Guide takes over: download the models (once, about 2 GB, from Hugging Face), add
    documents, connect Claude Desktop (then restart Claude). After that the only network use is
    `drive`, if you connect Google Drive.
 
 Update: unzip the new version over the old one and open it: its core has another version, so
-step 2 comes back; run its command again. Remove everything: delete the app, run `uv tool uninstall mcp-secret`,
+step 2 comes back. Remove everything: delete the app, run `uv tool uninstall mcp-secret`,
 and delete `~/Library/Application Support/mcp-secret` (the index and the token map).
+
+**Windows** (10 or 11, x64). Run `mcp-secret-setup-<version>.exe`. It is not code-signed:
+Windows says "Windows protected your PC"; click More info, then Run anyway. It installs for your
+account only (no administrator), carries uv, and installs the core with it (a few minutes; its
+log is `%LOCALAPPDATA%\Programs\mcp-secret\install.log`). Then open mcp-secret from the Start
+menu: it offers the model download, then add documents and Connect Claude Desktop (restart
+Claude). Update: run the new installer. Remove: Settings → Apps → mcp-secret (the core and uv's
+download cache go; the index and the token map stay in `%LOCALAPPDATA%\mcp-secret`: delete it
+too to remove everything).
 
 ## Develop
 
@@ -258,7 +271,9 @@ Release: once, `xcrun notarytool store-credentials mcp-secret` (Apple ID, app-sp
 password); then `./scripts/release.sh` writes `dist/mcp-secret-<version>.zip`, the version
 being `pyproject.toml`'s. The app carries the core's wheel and pinned dependencies
 (`uv export`), and asks for the install again whenever the core's `status` version differs. `SIGN_ID=- NOTARIZE=0 ./scripts/release.sh`
-builds an ad-hoc signed app to check the bundle on this Mac.
+builds an ad-hoc signed app to check the bundle on this Mac. The Windows installer
+(`scripts/installer.iss`) is built by CI (`.github/workflows/windows.yml`, the `installer` job's
+artifact), which also installs it, indexes a document with it and uninstalls it.
 
 `tests/test_leak.py` hides canaries in every corner of a DOCX, PDF, PNG, XLSX, EML and HTML,
 ingests them, drives `serve` through a real MCP client and checks that no canary reaches
