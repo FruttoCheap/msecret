@@ -245,6 +245,7 @@ def sandbox_denies(pid: int, op: str, path: str) -> bool:
     return check(pid, op.encode(), 0x40000001, path.encode()) == 1  # FILTER_PATH | NO_REPORT
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="sandbox-exec is macOS; Windows: test_winbox")
 def test_serve_profile_opens_the_links_to_python(tmp_path):
     """uv links a venv's python into cpython-3.12-<platform>, itself a link to the patch release:
     exec reads both links, which realpath skips. Without them serve's box refused to start."""

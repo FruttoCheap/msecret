@@ -596,7 +596,7 @@ let CATEGORIZED = """
         try Data().write(to: dir.appending(path: "mcp_secret-0.1.0-py3-none-any.whl"))
         let command = try #require(CLI.installCommand(resources: dir))
         #expect(command.contains("uv tool install"))
-        #expect(command.contains("cd '\(dir.path.replacingOccurrences(of: "'", with: #"'\''"#))' && uv tool install"))
+        #expect(command.contains("cd '\(dir.path.replacingOccurrences(of: "'", with: #"'\''"#))' && UV_MANAGED_PYTHON=1 uv tool install"))
         #expect(command.hasSuffix("-c constraints.txt ./mcp_secret-0.1.0-py3-none-any.whl"))
         #expect(CLI.shippedWheel(resources: dir)?.version == "0.1.0")
     }

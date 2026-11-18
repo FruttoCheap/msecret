@@ -3,6 +3,8 @@
 # older pinned stack of pyproject.toml's [tool.uv] and native OCR and sandbox (Rosetta has neither).
 name: ci
 on: [push, workflow_dispatch]
+env:
+  UV_MANAGED_PYTHON: 1  # the Python the installers use, not the runner's python.org build
 jobs:
   test:
     strategy:

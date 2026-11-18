@@ -71,8 +71,9 @@ begin
   WizardForm.ProgressGauge.Style := npbstMarquee;
   Log := ExpandConstant('{app}\install.log');
   // relative paths from {app}: a user name with a space stays one argument. The UI goes where
-  // the shortcuts point, whatever UV_TOOL_BIN_DIR says
-  if not Exec(ExpandConstant('{cmd}'), '/c set "UV_TOOL_BIN_DIR=%USERPROFILE%\.local\bin" && uv.exe tool install --force --reinstall --python 3.12 '
+  // the shortcuts point, whatever UV_TOOL_BIN_DIR says. uv's own Python: a system-wide one is
+  // where icacls cannot open it to the box
+  if not Exec(ExpandConstant('{cmd}'), '/c set "UV_TOOL_BIN_DIR=%USERPROFILE%\.local\bin" && set "UV_MANAGED_PYTHON=1" && uv.exe tool install --force --reinstall --python 3.12 '
               + '-c constraints.txt mcp_secret-{#Version}-py3-none-any.whl > install.log 2>&1',
               ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
     MsgBox(FmtMessage(CustomMessage('CoreFailed'), [Log]), mbError, MB_OK);

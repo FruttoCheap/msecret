@@ -32,6 +32,7 @@ struct CLI: Sendable, Equatable {
 
     /// What a first run pastes in Terminal: uv (fetched if missing), then the shipped wheel and the
     /// pins next to it. Also the update: `--reinstall` replaces a core of another version.
+    /// uv's own Python only: a python.org build re-execs Python.app, which serve's box forbids.
     /// It `cd`s into Resources and passes relative paths: uv before 0.13 cuts an absolute one at
     /// the first space ("mcp-secret 2.app", a second download).
     static func installCommand(resources: URL? = Bundle.main.resourceURL) -> String? {
@@ -39,7 +40,7 @@ struct CLI: Sendable, Equatable {
         let dir = "'" + wheel.url.deletingLastPathComponent().path.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
         return #"export PATH="$HOME/.local/bin:$PATH"; command -v uv >/dev/null || "#
             + "curl -LsSf https://astral.sh/uv/install.sh | sh; cd \(dir) && "
-            + "uv tool install --force --reinstall --python 3.12 -c constraints.txt ./\(wheel.url.lastPathComponent)"
+            + "UV_MANAGED_PYTHON=1 uv tool install --force --reinstall --python 3.12 -c constraints.txt ./\(wheel.url.lastPathComponent)"
     }
 
     /// Runs `installCommand` itself, so a first run needs no Terminal: its exit status and the
