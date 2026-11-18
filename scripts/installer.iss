@@ -1,6 +1,6 @@
 ; Windows installer: per user, no admin. Like the Mac app it carries the core's wheel, its pins and
 ; uv, and installs the core with `uv tool install` (network, a few minutes; Python and the
-; dependencies come from python.org builds and PyPI). Built by .github/workflows/windows.yml:
+; dependencies come from python.org builds and PyPI). Built by .github/workflows/ci.yml:
 ; iscc /DVersion=<x.y.z> scripts\installer.iss, with build\ holding uv.exe, the wheel,
 ; constraints.txt and mcp-secret.ico.
 

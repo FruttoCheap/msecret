@@ -272,7 +272,7 @@ password); then `./scripts/release.sh` writes `dist/mcp-secret-<version>.zip`, t
 being `pyproject.toml`'s. The app carries the core's wheel and pinned dependencies
 (`uv export`), and asks for the install again whenever the core's `status` version differs. `SIGN_ID=- NOTARIZE=0 ./scripts/release.sh`
 builds an ad-hoc signed app to check the bundle on this Mac. The Windows installer
-(`scripts/installer.iss`) is built by CI (`.github/workflows/windows.yml`, the `installer` job's
+(`scripts/installer.iss`) is built by CI (`.github/workflows/ci.yml`, the `installer` job's
 artifact), which also installs it, indexes a document with it and uninstalls it.
 
 `tests/test_leak.py` hides canaries in every corner of a DOCX, PDF, PNG, XLSX, EML and HTML,

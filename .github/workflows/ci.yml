@@ -1,10 +1,15 @@
-# The suite on Windows: every ingest, export and serve there runs in winbox's AppContainer,
-# and test_winbox/test_gui only run here.
-name: windows
+# The suite where this Mac cannot run it: Windows, where every ingest, export and serve runs in
+# winbox's AppContainer (test_winbox and test_gui only run there), and an Intel Mac, with the
+# older pinned stack of pyproject.toml's [tool.uv] and native OCR and sandbox (Rosetta has neither).
+name: ci
 on: [push, workflow_dispatch]
 jobs:
   test:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -16,7 +21,7 @@ jobs:
           path: |
             ~/.cache/huggingface
             ~/.cache/docling
-          key: models-${{ hashFiles('src/mcp_secret/pii.py', 'uv.lock') }}
+          key: models-${{ runner.os }}-${{ hashFiles('src/mcp_secret/pii.py', 'uv.lock') }}
       - run: uv run mcp-secret models
       - uses: actions/cache/save@v4  # now, not after the job: a failing test still keeps them
         if: steps.models.outputs.cache-hit != 'true'
@@ -61,7 +66,7 @@ jobs:
           path: |
             ~/.cache/huggingface
             ~/.cache/docling
-          key: models-${{ hashFiles('src/mcp_secret/pii.py', 'uv.lock') }}
+          key: models-${{ runner.os }}-${{ hashFiles('src/mcp_secret/pii.py', 'uv.lock') }}
           fail-on-cache-miss: true
       - name: Install, index a document, uninstall
         run: |
