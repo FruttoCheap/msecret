@@ -236,7 +236,9 @@ Both from the [latest release](https://github.com/FruttoCheap/msecret/releases/l
 
 **Mac** (Apple Silicon or Intel, macOS 15+). On Intel the core installs older pinned versions
 (torch 2.2.2, docling 2.73, gliner 0.2.22: nothing newer publishes an Intel wheel), see
-`[tool.uv]` in `pyproject.toml`.
+`[tool.uv]` in `pyproject.toml`. Docling 2.73's layout model takes more lines for page headers
+(a lone line at the top of a page) and leaves them out: missing from what the agent sees, not
+published in clear.
 
 1. Download `mcp-secret-<version>.zip`, unzip it, drag `mcp-secret.app` to Applications and
    open it.

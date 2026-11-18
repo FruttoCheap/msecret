@@ -36,7 +36,8 @@ NFD = unicodedata.normalize("NFD", NAME)
 
 def _pdf(path: Path, text: str, title: str, author: str) -> None:
     """Minimal one-page PDF with a text layer and an Info dictionary."""
-    stream = f"BT /F1 12 Tf 50 750 Td ({text}) Tj ET".encode()
+    # mid-page: Docling 2.73 (Intel Macs) reads a lone line at the top as a page header, dropped
+    stream = f"BT /F1 12 Tf 50 400 Td ({text}) Tj ET".encode()
     objs = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
             b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 5 0 R"
             + b"/Resources<</Font<</F1 4 0 R>>>>>>", b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",

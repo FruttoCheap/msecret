@@ -62,12 +62,11 @@ jobs:
           name: mcp-secret-setup-${{ env.VERSION }}
           path: dist/mcp-secret-setup-*.exe
       - uses: actions/cache/restore@v4
-        with:  # the test job's models: `mcp-secret models` is the UI's first-launch step
+        with:  # the test job's models, when it saved them already
           path: |
             ~/.cache/huggingface
             ~/.cache/docling
           key: models-${{ runner.os }}-${{ hashFiles('src/mcp_secret/pii.py', 'uv.lock') }}
-          fail-on-cache-miss: true
       - name: Install, index a document, uninstall
         run: |
           Start-Process "dist\mcp-secret-setup-$env:VERSION.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
@@ -76,6 +75,7 @@ jobs:
           $cli, $gui = "$env:USERPROFILE\.local\bin\mcp-secret.exe", "$env:USERPROFILE\.local\bin\mcp-secret-gui.exe"
           if (-not (Test-Path $gui)) { throw "no $gui" }
           & $cli --json status
+          & $cli --json models | Select-Object -Last 1  # the UI's first-launch step; quick when cached
           $doc = "$env:RUNNER_TEMP\contratto.txt"
           Set-Content $doc "Contratto tra Mario Rossi, codice fiscale RSSMRA80A01H501U." -Encoding utf8
           $d = & $cli --json ingest $doc | ConvertFrom-Json | Where-Object event -eq doc

@@ -61,6 +61,7 @@ def profile(root: Path | None = None) -> str:
         # SQLite lstat()s every path component when opening public.db
         f"(allow file-read-metadata {_any('literal', pub.parents)})",
         f"(allow file-read* {_any('subpath', [pub, *sorted(runtime)])})",
+        f"(allow file-read* {_any('literal', sorted(_links(sys.executable)))})",
         # sandbox-exec execs the interpreter itself, after the profile applies
         "(deny process-exec*)",
         f"(allow process-exec {_any('literal', {sys.executable, os.path.realpath(sys.executable)})})",
@@ -70,6 +71,19 @@ def profile(root: Path | None = None) -> str:
         # hardened runtime, stay readable to a compromised serve (README, residual risks).
         "(deny process-info* signal)(allow process-info* signal (target self))",
     ])
+
+
+def _links(path: str) -> set[str]:
+    """The symlinks exec reads on its way to `path`: uv links a venv's python into
+    cpython-3.12-<platform>, itself a link to the patch release's folder (realpath skips it)."""
+    seen, todo = set(), [path]
+    while todo:
+        p = todo.pop()
+        for a in (p, *map(str, Path(p).parents)):
+            if os.path.islink(a) and a not in seen:
+                seen.add(a)
+                todo.append(os.path.join(os.path.dirname(a), os.readlink(a)))
+    return seen
 
 
 def sandbox_cmd(prof: str, *args: str) -> list[str]:

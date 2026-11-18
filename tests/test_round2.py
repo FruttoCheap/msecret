@@ -17,7 +17,7 @@ from test_leak import CLI
 from test_pii import generate
 
 from mcp_secret import ingest, pii, server
-from mcp_secret.cli import profile, sandbox_cmd
+from mcp_secret.cli import _links, profile, sandbox_cmd
 
 TOKEN = re.compile(r"\[[A-Z]+(?:_[A-Z]+)*_\d+\]")
 
@@ -243,6 +243,18 @@ def sandbox_denies(pid: int, op: str, path: str) -> bool:
     check = ctypes.CDLL(None).sandbox_check
     check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]  # the path is variadic
     return check(pid, op.encode(), 0x40000001, path.encode()) == 1  # FILTER_PATH | NO_REPORT
+
+
+def test_serve_profile_opens_the_links_to_python(tmp_path):
+    """uv links a venv's python into cpython-3.12-<platform>, itself a link to the patch release:
+    exec reads both links, which realpath skips. Without them serve's box refused to start."""
+    (tmp_path / "cpython-3.12.15" / "bin").mkdir(parents=True)
+    (tmp_path / "cpython-3.12.15" / "bin" / "python3.12").touch()
+    (tmp_path / "cpython-3.12").symlink_to(tmp_path / "cpython-3.12.15")
+    (tmp_path / "venv" / "bin").mkdir(parents=True)
+    exe = tmp_path / "venv" / "bin" / "python"
+    exe.symlink_to(tmp_path / "cpython-3.12" / "bin" / "python3.12")
+    assert _links(str(exe)) == {str(exe), str(tmp_path / "cpython-3.12")}
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="sandbox-exec is macOS; Windows: test_winbox")
