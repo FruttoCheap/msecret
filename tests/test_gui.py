@@ -1,5 +1,8 @@
 """The tkinter UI, through the real CLI in a temporary data root: open a document, mask a value."""
 
+import ast
+import inspect
+import re
 import time
 import tkinter as tk
 
@@ -9,12 +12,30 @@ from test_cli_json import CONTRACT
 from mcp_secret import gui
 
 
+def test_italian_has_every_string():
+    """Each string the UI shows has its Italian, with the same {fields}: a missing one would show
+    in English, a wrong field would raise."""
+    def texts(n: ast.expr) -> set:  # a literal, a module constant, or one of two
+        if isinstance(n, ast.IfExp):
+            return texts(n.body) | texts(n.orelse)
+        return {n.value if isinstance(n, ast.Constant) else getattr(gui, getattr(n, "id", ""), None)}
+
+    shown = {s for c in ast.walk(ast.parse(inspect.getsource(gui)))
+             if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "tr" for s in texts(c.args[0])}
+    shown.discard(None)  # a local variable: tr(state), "missing" or "changed"
+    assert {gui.FIND, "Original", "{n} documents"} <= shown  # the walk does find them
+    assert shown <= set(gui.IT), shown - set(gui.IT)
+    for en, it in gui.IT.items():
+        assert sorted(re.findall(r"{\w*}", en)) == sorted(re.findall(r"{\w*}", it)), en
+
+
 def test_open_then_always_mask(tmp_path, monkeypatch):
     try:
         root = tk.Tk()
     except tk.TclError as e:  # no display; uv's macOS Python in a venv also wants TCL_LIBRARY
         pytest.skip(f"no Tk: {e}")
     monkeypatch.setenv("MCP_SECRET_HOME", str(tmp_path / "data"))
+    monkeypatch.setattr(gui, "LANG", gui.IT)  # whatever the system's: the Italian runs for real
     errors = []  # a modal dialog would block the loop below
     for dialog in ("showerror", "showwarning"):
         monkeypatch.setattr(gui.messagebox, dialog, lambda *a: errors.append(a))
@@ -38,6 +59,7 @@ def test_open_then_always_mask(tmp_path, monkeypatch):
 
     app.ingest(str(doc))
     until(lambda: app.docs)
+    assert app.status.get() == "1 documento"
     app.tree.selection_set(next(iter(app.docs)))
     until(lambda: "[PERSONA_" in agent() and masked())
     assert {"Mario Rossi", "RSSMRA80A01H501U"} <= set(masked()) and "Mario" not in agent()

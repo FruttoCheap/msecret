@@ -186,7 +186,8 @@ swift run --package-path apps/macos MCPSecret
 
 Windows and Linux: `uv run mcp-secret-gui` (on Windows also `.venv\Scripts\mcp-secret-gui.exe`,
 no console; the installer in [Try the app](#try-the-app) adds it to the Start menu). A smaller
-tkinter UI, Windows 11 style (sv-ttk), in English, on the same contract: add files or folders, the original with
+tkinter UI, Windows 11 style (sv-ttk), Italian or English following the system (on Windows its
+display language), on the same contract: add files or folders, the original with
 its masked values tinted by type and tagged with their token next to what the agent sees (click
 a value to find its token there), Open File for the original in its own app, Always/Never Mask a
 selection, Re-index, Export… (the open document, `export --doc`) and Export All for Cowork,
