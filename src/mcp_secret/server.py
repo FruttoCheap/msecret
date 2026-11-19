@@ -13,7 +13,8 @@ TOKENS = ("Personal data is replaced by tokens like [PERSONA_3], [IBAN_1], [EMAI
           "queries to find that entity elsewhere. Original values exist nowhere you can reach.")
 
 app = MCPServer("mcp-secret", instructions=TOKENS)
-con: sqlite3.Connection
+public: Path
+con: sqlite3.Connection | None = None  # opened by the first tool call: Claude starts serve before any ingest
 # Clients may skip the per-call approval for read-only tools (Claude Desktop asks otherwise).
 RO = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True,
                      open_world_hint=False)
@@ -22,6 +23,16 @@ RO = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hin
 def connect(db: Path) -> sqlite3.Connection:
     con = sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, check_same_thread=False)
     con.execute("PRAGMA temp_store = MEMORY")  # serve's sandbox denies $TMPDIR
+    return con
+
+
+def conn() -> sqlite3.Connection:
+    global con
+    if con is None:
+        if not public.exists():
+            raise ToolError("no documents indexed yet: ask the user to add some in the mcp-secret "
+                            "app (or `mcp-secret ingest <path>`), then retry")
+        con = connect(public)
     return con
 
 
@@ -39,6 +50,7 @@ Query syntax (SQLite FTS5): words, prefix*, "exact phrase", AND, OR, NOT,
 tokens without brackets (PERSONA_3). Returns up to k (max 20) chunks, best first, each with
 its document's file name (pseudonymized too): cite documents by that name.""")
 def search(query: str, k: int = 10) -> list[dict]:
+    con = conn()
     try:
         rows = con.execute("SELECT rowid, doc_id, text, -rank FROM chunks WHERE chunks MATCH ? "
                            "ORDER BY rank LIMIT ?",
@@ -52,7 +64,7 @@ def search(query: str, k: int = 10) -> list[dict]:
 @app.tool(annotations=RO)
 def get_chunk(chunk_id: int, neighbors: int = 0) -> list[dict]:
     """Chunk `chunk_id` plus up to `neighbors` (0-2) chunks before and after it, in document order."""
-    n = max(0, min(neighbors, 2))
+    con, n = conn(), max(0, min(neighbors, 2))
     rows = con.execute("SELECT c.rowid, c.doc_id, c.text FROM chunks c, chunks x WHERE x.rowid = ? "
                        "AND c.doc_id = x.doc_id AND c.seq BETWEEN x.seq - ? AND x.seq + ? "
                        "ORDER BY c.seq", (chunk_id, n, n))
@@ -63,12 +75,13 @@ def get_chunk(chunk_id: int, neighbors: int = 0) -> list[dict]:
 @app.tool(annotations=RO)
 def list_sources() -> list[dict]:
     """Indexed documents: random doc_id, file name (pseudonymized, no folders), chunk count."""
+    con = conn()
     rows = con.execute("SELECT doc_id, count(*) FROM chunks GROUP BY doc_id ORDER BY doc_id")
     name = names(con).get
     return [{"doc_id": d, "name": name(d), "n_chunks": n} for d, n in rows]
 
 
 def run(db: Path) -> None:
-    global con
-    con = connect(db)
+    global public
+    public = db
     app.run()

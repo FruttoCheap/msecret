@@ -286,6 +286,29 @@ def test_serve_writes_no_file(tmp_path):
         p.wait()
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="sandbox-exec is macOS; Windows: test_winbox")
+def test_serve_starts_before_the_first_ingest(tmp_path):
+    """A fresh install: Claude launches serve with no index yet. It must stay up and say so."""
+    env = {**os.environ, "MCP_SECRET_HOME": str(tmp_path / "data")}
+    p = subprocess.Popen([CLI, "serve"], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True)
+    threading.Timer(60, p.kill).start()
+
+    def rpc(method: str, **params) -> dict:
+        p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}) + "\n")
+        p.stdin.flush()
+        return json.loads(p.stdout.readline())
+
+    try:
+        assert "result" in rpc("initialize", protocolVersion=LATEST_PROTOCOL_VERSION,
+                               capabilities={}, clientInfo={"name": "t", "version": "0"})
+        r = rpc("tools/call", name="list_sources", arguments={})["result"]
+        assert r["isError"] and "no documents indexed" in r["content"][0]["text"]
+    finally:
+        p.kill()
+        p.wait()
+
+
 PROC_PROBE = """
 import ctypes, os
 ppid, buf = os.getppid(), ctypes.create_string_buffer(4096)

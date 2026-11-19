@@ -652,11 +652,10 @@ def main() -> None:
     priv, db = root / "private", root / "public" / "public.db"
 
     if args.cmd == "serve":  # stdout is MCP: --json does not apply
-        if not db.exists():
-            sys.exit(NO_INDEX)
         os.environ["HF_HUB_OFFLINE"] = "1"
         if not args.sandboxed:
             _private(priv)
+            (root / "public").mkdir(exist_ok=True)  # Claude starts serve before the first ingest; the box needs the folder
             os.chdir("/")  # a cwd under $HOME is unreadable in the sandbox (rich calls getcwd)
         _sandboxed(args, root, lambda: os.listdir(priv))
         from mcp_secret import server
