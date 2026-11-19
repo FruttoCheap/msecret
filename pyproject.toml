@@ -1,6 +1,6 @@
 [project]
 name = "mcp-secret"
-version = "0.2.1"
+version = "0.2.2"
 description = "Local document index exposed to AI agents via MCP, pseudonymized only."
 license = "MIT"
 license-files = ["LICENSE"]
